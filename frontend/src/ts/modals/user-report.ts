@@ -1,12 +1,14 @@
 import Ape from "../ape";
-import * as Loader from "../elements/loader";
+
+import { showLoaderBar, hideLoaderBar } from "../signals/loader-bar";
 import * as Notifications from "../elements/notifications";
 import * as CaptchaController from "../controllers/captcha-controller";
 import SlimSelect from "slim-select";
 import AnimatedModal from "../utils/animated-modal";
 import { isAuthenticated } from "../firebase";
 import { CharacterCounter } from "../elements/character-counter";
-import { ReportUserReason } from "@monkeytype/contracts/schemas/users";
+import { ReportUserReason } from "@monkeytype/schemas/users";
+import { qsr } from "../utils/dom";
 
 type State = {
   userUid?: string;
@@ -35,7 +37,7 @@ export async function show(options: ShowOptions): Promise<void> {
   if (!CaptchaController.isCaptchaAvailable()) {
     Notifications.add(
       "Could not show user report popup: Captcha is not available. This could happen due to a blocked or failed network request. Please refresh the page or contact support if this issue persists.",
-      -1
+      -1,
     );
     return;
   }
@@ -45,30 +47,29 @@ export async function show(options: ShowOptions): Promise<void> {
     focusFirstInput: true,
     beforeAnimation: async (modalEl) => {
       CaptchaController.render(
-        modalEl.querySelector(".g-recaptcha") as HTMLElement,
-        "userReportModal"
+        modalEl.qsr(".g-recaptcha").native,
+        "userReportModal",
       );
 
       const { name } = options;
       state.userUid = options.uid;
       state.lbOptOut = options.lbOptOut;
 
-      (modalEl.querySelector(".user") as HTMLElement).textContent = name;
-      (modalEl.querySelector(".reason") as HTMLSelectElement).value =
-        "Inappropriate name";
-      (modalEl.querySelector(".comment") as HTMLTextAreaElement).value = "";
+      modalEl.qs(".user")?.setText(name);
+      modalEl.qs<HTMLSelectElement>(".reason")?.setValue("Inappropriate name");
+      modalEl.qs<HTMLTextAreaElement>(".comment")?.setValue("");
 
       select = new SlimSelect({
-        select: modalEl.querySelector(".reason") as HTMLElement,
+        select: modalEl.qs(".reason")?.native as HTMLElement,
         settings: {
           showSearch: false,
-          contentLocation: modalEl,
+          contentLocation: modalEl.native,
         },
       });
     },
   });
 
-  new CharacterCounter($("#userReportModal .comment"), 250);
+  new CharacterCounter(modal.getModal().qsr(".comment"), 250);
 }
 
 async function hide(): Promise<void> {
@@ -82,8 +83,12 @@ async function submitReport(): Promise<void> {
     return;
   }
 
-  const reason = $("#userReportModal .reason").val() as ReportUserReason;
-  const comment = $("#userReportModal .comment").val() as string;
+  const reason = qsr<HTMLSelectElement>(
+    "#userReportModal .reason",
+  ).getValue() as ReportUserReason;
+  const comment = qsr<HTMLTextAreaElement>(
+    "#userReportModal .comment",
+  ).getValue() as string;
   const captcha = captchaResponse;
 
   if (!reason) {
@@ -102,7 +107,7 @@ async function submitReport(): Promise<void> {
       0,
       {
         duration: 10,
-      }
+      },
     );
     return;
   }
@@ -110,12 +115,12 @@ async function submitReport(): Promise<void> {
   const characterDifference = comment.length - 250;
   if (characterDifference > 0) {
     Notifications.add(
-      `Report comment is ${characterDifference} character(s) too long`
+      `Report comment is ${characterDifference} character(s) too long`,
     );
     return;
   }
 
-  Loader.show();
+  showLoaderBar();
   const response = await Ape.users.report({
     body: {
       uid: state.userUid as string,
@@ -124,10 +129,10 @@ async function submitReport(): Promise<void> {
       captcha,
     },
   });
-  Loader.hide();
+  hideLoaderBar();
 
   if (response.status !== 200) {
-    Notifications.add("Failed to report user: " + response.body.message, -1);
+    Notifications.add("Failed to report user", -1, { response });
     return;
   }
 
@@ -138,7 +143,7 @@ async function submitReport(): Promise<void> {
 const modal = new AnimatedModal({
   dialogId: "userReportModal",
   setup: async (modalEl): Promise<void> => {
-    modalEl.querySelector("button")?.addEventListener("click", () => {
+    modalEl.qs("button")?.on("click", () => {
       void submitReport();
     });
   },

@@ -1,12 +1,13 @@
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { canSetConfigWithCurrentFunboxes } from "../../../src/ts/test/funbox/funbox-validation";
 
 import * as Notifications from "../../../src/ts/elements/notifications";
-import { FunboxName } from "@monkeytype/contracts/schemas/configs";
+import { FunboxName } from "@monkeytype/schemas/configs";
 describe("funbox-validation", () => {
   describe("canSetConfigWithCurrentFunboxes", () => {
     const addNotificationMock = vi.spyOn(Notifications, "add");
     afterEach(() => {
-      addNotificationMock.mockReset();
+      addNotificationMock.mockClear();
     });
 
     const testCases = [
@@ -53,7 +54,7 @@ describe("funbox-validation", () => {
           value,
           funbox: [funbox],
           error: `You can't set mode to ${value} with currently active funboxes.`,
-        }))
+        })),
       ),
       { key: "mode", value: "quote", funbox: ["space_balls"] }, //no frontendFunctions
     ];
@@ -61,7 +62,7 @@ describe("funbox-validation", () => {
       `check $funbox with $key=$value`,
       ({ key, value, funbox, error }) => {
         expect(
-          canSetConfigWithCurrentFunboxes(key, value, funbox as FunboxName[])
+          canSetConfigWithCurrentFunboxes(key, value, funbox as FunboxName[]),
         ).toBe(error === undefined);
 
         if (error !== undefined) {
@@ -69,7 +70,7 @@ describe("funbox-validation", () => {
             duration: 5,
           });
         }
-      }
+      },
     );
   });
 });

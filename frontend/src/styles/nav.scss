@@ -2,20 +2,20 @@ nav {
   font-size: 1rem;
   line-height: 1rem;
   color: var(--sub-color);
-  display: grid;
-  grid-auto-flow: column;
+  display: flex;
   gap: 0.5rem;
-  // margin-bottom: -0.4rem;
-  width: -moz-fit-content;
-  width: fit-content;
   width: 100%;
-  grid-template-columns: auto auto auto auto 1fr auto;
+
+  .spacer {
+    flex-grow: 1;
+  }
 
   button.showAlerts {
     position: relative;
   }
 
   .textButton {
+    position: relative;
     .text {
       font-size: 0.75em;
       align-self: center;
@@ -25,13 +25,15 @@ nav {
     }
 
     .icon,
-    .loading,
-    .user {
+    .spinner {
       width: 1.25em;
       height: 1.25em;
-      // background: red;
       display: grid;
       place-content: center center;
+    }
+    .spinner {
+      opacity: 0;
+      transition: opacity 0.125s;
     }
   }
 
@@ -43,26 +45,29 @@ nav {
       gap: 0.33em;
       display: grid;
       grid-auto-flow: column;
-      .loading,
-      .user,
+
+      .notificationBubble {
+        left: 3em;
+        top: 0.5em;
+      }
+
+      .spinner,
       .avatar {
         grid-column: 1/2;
         grid-row: 1/2;
+        place-self: center center;
+      }
+
+      .discordImage {
         width: 1.25em;
         height: 1.25em;
       }
-
-      // .loading,
-      // .user {
-      //   // margin-top: 0.1rem;
-      // }
 
       .levelAndBar {
         transition: 0.125s;
       }
 
       .level {
-        transition: 0.125s;
         width: max-content;
         font-size: 0.65em;
         line-height: 0.65em;
@@ -190,7 +195,9 @@ nav {
         border-radius: var(--roundness);
         gap: 0.25em;
 
-        * {
+        a,
+        button {
+          justify-items: start;
           justify-content: left;
           padding-left: 0;
           border-radius: 0;
@@ -207,6 +214,18 @@ nav {
           }
           &:focus-visible {
             border-radius: var(--roundness);
+          }
+        }
+
+        & .goToFriends {
+          display: grid;
+          grid-template-columns: auto 1fr auto;
+          text-align: left;
+          .notificationBubble {
+            margin-right: 0.5em;
+            position: unset;
+            box-shadow: 0 0 0 0.5em var(--sub-alt-color);
+            display: block;
           }
         }
       }
@@ -240,7 +259,7 @@ header {
   display: grid;
   grid-auto-flow: column;
   grid-template-columns: auto 1fr;
-  z-index: 2;
+  z-index: 3;
   align-items: center;
   gap: 0.5rem;
   -webkit-user-select: none;
@@ -277,7 +296,9 @@ header {
         font-size: 0.325em;
         line-height: 0.325em;
         color: var(--sub-color);
-        transition: color 0.125s, opacity 0.125s;
+        transition:
+          color 0.125s,
+          opacity 0.125s;
       }
       position: relative;
       font-size: 2rem;
@@ -320,7 +341,9 @@ header {
     }
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 0.1rem var(--bg-color), 0 0 0 0.2rem var(--text-color);
+      box-shadow:
+        0 0 0 0.1rem var(--bg-color),
+        0 0 0 0.2rem var(--text-color);
       border-radius: var(--roundness);
       .text .top {
         opacity: 0;

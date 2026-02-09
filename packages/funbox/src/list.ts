@@ -1,4 +1,4 @@
-import { FunboxName } from "@monkeytype/contracts/schemas/configs";
+import { FunboxName } from "@monkeytype/schemas/configs";
 import { FunboxMetadata } from "./types";
 
 const list: Record<FunboxName, FunboxMetadata> = {
@@ -14,7 +14,7 @@ const list: Record<FunboxName, FunboxMetadata> = {
       "getWord",
       "punctuateWord",
       "rememberSettings",
-      "handleChar",
+      "getEmulatedChar",
     ],
     name: "58008",
     alias: "numbers",
@@ -107,20 +107,27 @@ const list: Record<FunboxName, FunboxMetadata> = {
     frontendFunctions: [
       "getWord",
       "rememberSettings",
-      "handleChar",
+      "getEmulatedChar",
       "isCharCorrect",
-      "preventDefaultEvent",
       "getWordHtml",
     ],
     name: "arrows",
   },
   rAnDoMcAsE: {
-    description: "I kInDa LiKe HoW iNeFfIcIeNt QwErTy Is.",
+    description: "raNdomIze ThE CApitaLizatIon Of EveRY LeTtEr.",
     canGetPb: false,
     difficultyLevel: 2,
     properties: ["changesCapitalisation"],
     frontendFunctions: ["alterText"],
     name: "rAnDoMcAsE",
+  },
+  sPoNgEcAsE: {
+    description: "I kInDa LiKe HoW iNeFfIcIeNt QwErTy Is.",
+    canGetPb: false,
+    difficultyLevel: 2,
+    properties: ["changesCapitalisation"],
+    frontendFunctions: ["alterText"],
+    name: "sPoNgEcAsE",
   },
   capitals: {
     description: "Capitalize Every Word.",
@@ -133,7 +140,7 @@ const list: Record<FunboxName, FunboxMetadata> = {
   layout_mirror: {
     description: "Mirror the keyboard layout",
     canGetPb: true,
-    difficultyLevel: 1,
+    difficultyLevel: 3,
     properties: ["changesLayout"],
     frontendFunctions: ["applyConfig", "rememberSettings"],
     name: "layout_mirror",
@@ -404,9 +411,9 @@ const list: Record<FunboxName, FunboxMetadata> = {
     name: "backwards",
     properties: [
       "hasCssFile",
-      "noLigatures",
       "conflictsWithSymmetricChars",
       "wordOrder:reverse",
+      "reverseDirection",
     ],
     canGetPb: true,
     frontendFunctions: ["alterText"],
@@ -424,7 +431,7 @@ const list: Record<FunboxName, FunboxMetadata> = {
   instant_messaging: {
     description: "Who needs shift anyway?",
     canGetPb: false,
-    difficultyLevel: 1,
+    difficultyLevel: 0,
     properties: ["changesCapitalisation"],
     frontendFunctions: ["alterText"],
     name: "instant_messaging",
@@ -432,7 +439,7 @@ const list: Record<FunboxName, FunboxMetadata> = {
   underscore_spaces: {
     description: "Underscores_are_better.",
     canGetPb: false,
-    difficultyLevel: 0,
+    difficultyLevel: 1,
     properties: ["ignoresLanguage", "ignoresLayout", "nospace"],
     frontendFunctions: ["alterText"],
     name: "underscore_spaces",
@@ -461,12 +468,26 @@ const list: Record<FunboxName, FunboxMetadata> = {
     name: "asl",
     cssModifications: ["words"],
   },
+  rot13: {
+    description: "Vg znl abg or frpher, ohg vg vf sha gb glcr!",
+    canGetPb: true,
+    difficultyLevel: 1,
+    properties: [],
+    frontendFunctions: ["alterText"],
+    name: "rot13",
+  },
+  no_quit: {
+    description: "You can't restart the test.",
+    canGetPb: true,
+    difficultyLevel: 0,
+    name: "no_quit",
+  },
 };
 
 export function getFunbox(name: FunboxName): FunboxMetadata;
 export function getFunbox(names: FunboxName[]): FunboxMetadata[];
 export function getFunbox(
-  nameOrNames: FunboxName | FunboxName[]
+  nameOrNames: FunboxName | FunboxName[],
 ): FunboxMetadata | FunboxMetadata[] {
   if (nameOrNames === undefined) return [];
   if (Array.isArray(nameOrNames)) {
@@ -474,7 +495,9 @@ export function getFunbox(
 
     //@ts-expect-error sanity check
     if (out.includes(undefined)) {
-      throw new Error("One of the funboxes is invalid: " + nameOrNames);
+      throw new Error(
+        "One of the funboxes is invalid: " + nameOrNames.toString(),
+      );
     }
 
     return out;

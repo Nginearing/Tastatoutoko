@@ -1,3 +1,4 @@
+import { describe, it, expect } from "vitest";
 import { parseWithSchema } from "../src/json";
 import { z } from "zod";
 
@@ -11,8 +12,8 @@ describe("json", () => {
     it("should throw with invalid json", () => {
       expect(() => parseWithSchema("blah", schema)).toThrowError(
         new Error(
-          `Invalid JSON: Unexpected token 'b', "blah" is not valid JSON`
-        )
+          `Invalid JSON: Unexpected token 'b', "blah" is not valid JSON`,
+        ),
       );
     });
     it("should parse", () => {
@@ -41,8 +42,8 @@ describe("json", () => {
 
       expect(() => parseWithSchema(json, schema)).toThrowError(
         new Error(
-          `JSON does not match schema: "test" expected boolean, received string, "name" required, "nested.foo" expected string, received number`
-        )
+          `JSON does not match schema: "test" expected boolean, received string, "name" required, "nested.foo" expected string, received number`,
+        ),
       );
     });
     it("should migrate if valid json", () => {
@@ -96,8 +97,8 @@ describe("json", () => {
         });
       }).toThrowError(
         new Error(
-          `Migrated value does not match schema: "test" expected boolean, received string, "name" expected string, received null`
-        )
+          `Migrated value does not match schema: "test" expected boolean, received string, "name" expected string, received null`,
+        ),
       );
     });
     it("should revert to fallback if migration fails", () => {

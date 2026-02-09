@@ -3,7 +3,7 @@ import QuotesController, { Quote } from "../../controllers/quotes-controller";
 import * as Notifications from "../../elements/notifications";
 import { isAuthenticated } from "../../firebase";
 import { createErrorMessage } from "../../utils/misc";
-import * as Loader from "../../elements/loader";
+import { showLoaderBar, hideLoaderBar } from "../../signals/loader-bar";
 import * as TestWords from "../../test/test-words";
 import { Command } from "../types";
 
@@ -23,18 +23,18 @@ const commands: Command[] = [
     },
     exec: async (): Promise<void> => {
       try {
-        Loader.show();
+        showLoaderBar();
         await QuotesController.setQuoteFavorite(
           TestWords.currentQuote as Quote,
-          true
+          true,
         );
-        Loader.hide();
+        hideLoaderBar();
         Notifications.add("Quote added to favorites", 1);
       } catch (e) {
-        Loader.hide();
+        hideLoaderBar();
         const message = createErrorMessage(
           e,
-          "Failed to add quote to favorites"
+          "Failed to add quote to favorites",
         );
         Notifications.add(message, -1);
       }
@@ -55,18 +55,18 @@ const commands: Command[] = [
     },
     exec: async (): Promise<void> => {
       try {
-        Loader.show();
+        showLoaderBar();
         await QuotesController.setQuoteFavorite(
           TestWords.currentQuote as Quote,
-          false
+          false,
         );
-        Loader.hide();
+        hideLoaderBar();
         Notifications.add("Quote removed from favorites", 1);
       } catch (e) {
-        Loader.hide();
+        hideLoaderBar();
         const message = createErrorMessage(
           e,
-          "Failed to remove quote from favorites"
+          "Failed to remove quote from favorites",
         );
         Notifications.add(message, -1);
       }

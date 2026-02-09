@@ -1,9 +1,10 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* oxlint-disable no-unsafe-call */
+/* oxlint-disable no-unsafe-member-access */
 import * as Notifications from "../elements/notifications";
 import * as AdController from "../controllers/ad-controller";
 import * as Skeleton from "../utils/skeleton";
 import { isPopupVisible } from "../utils/misc";
+import { onDOMReady, qs } from "../utils/dom";
 
 const wrapperId = "videoAdPopupWrapper";
 
@@ -16,7 +17,7 @@ export async function show(): Promise<void> {
       0,
       {
         duration: 6,
-      }
+      },
     );
     return;
   }
@@ -28,38 +29,40 @@ export async function show(): Promise<void> {
       0,
       {
         duration: 7,
-      }
+      },
     );
     return;
   }
 
   if (!isPopupVisible(wrapperId)) {
-    $("#videoAdPopupWrapper")
-      .stop(true, true)
-      .css("opacity", 0)
-      .removeClass("hidden")
-      .animate({ opacity: 1 }, 125, () => {
+    const el = qs("#videoAdPopupWrapper");
+
+    el?.animate({
+      opacity: [0, 1],
+      duration: 125,
+      onBegin: () => {
+        el.show();
+      },
+      onComplete: () => {
         //@ts-expect-error 3rd party ad code
         window.dataLayer.push({ event: "EG_Video" });
-      });
+      },
+    });
   }
 }
 
 function hide(): void {
   if (isPopupVisible(wrapperId)) {
-    $("#videoAdPopupWrapper")
-      .stop(true, true)
-      .css("opacity", 1)
-      .animate(
-        {
-          opacity: 0,
-        },
-        125,
-        () => {
-          $("#videoAdPopupWrapper").addClass("hidden");
-          Skeleton.remove(wrapperId);
-        }
-      );
+    const el = qs("#videoAdPopupWrapper");
+
+    el?.animate({
+      opacity: [1, 0],
+      duration: 125,
+      onComplete: () => {
+        el.hide();
+        Skeleton.remove(wrapperId);
+      },
+    });
   }
 }
 
@@ -78,8 +81,10 @@ export function egVideoListener(options: Record<string, string>): void {
   }
 }
 
-$(".pageTest #watchVideoAdButton").on("click", () => {
+qs(".pageTest #watchVideoAdButton")?.on("click", () => {
   void show();
 });
 
-Skeleton.save(wrapperId);
+onDOMReady(() => {
+  Skeleton.save(wrapperId);
+});

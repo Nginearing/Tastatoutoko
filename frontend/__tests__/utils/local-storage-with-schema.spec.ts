@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { z } from "zod";
 import { LocalStorageWithSchema } from "../../src/ts/utils/local-storage-with-schema";
 
@@ -32,9 +33,9 @@ describe("local-storage-with-schema.ts", () => {
     });
 
     afterEach(() => {
-      getItemMock.mockReset();
-      setItemMock.mockReset();
-      removeItemMock.mockReset();
+      getItemMock.mockClear();
+      setItemMock.mockClear();
+      removeItemMock.mockClear();
     });
 
     beforeEach(() => {
@@ -51,7 +52,7 @@ describe("local-storage-with-schema.ts", () => {
 
         expect(localStorage.setItem).toHaveBeenCalledWith(
           "config",
-          JSON.stringify(defaultObject)
+          JSON.stringify(defaultObject),
         );
         expect(res).toBe(true);
       });
@@ -115,7 +116,7 @@ describe("local-storage-with-schema.ts", () => {
         expect(getItemMock).toHaveBeenCalledWith("config");
         expect(setItemMock).toHaveBeenCalledWith(
           "config",
-          JSON.stringify(defaultObject)
+          JSON.stringify(defaultObject),
         );
         expect(res).toEqual(defaultObject);
 
@@ -151,7 +152,7 @@ describe("local-storage-with-schema.ts", () => {
         expect(getItemMock).toHaveBeenCalledWith("config");
         expect(setItemMock).toHaveBeenCalledWith(
           "config",
-          JSON.stringify(defaultObject)
+          JSON.stringify(defaultObject),
         );
         expect(res).toEqual(defaultObject);
 
@@ -185,11 +186,11 @@ describe("local-storage-with-schema.ts", () => {
         expect(getItemMock).toHaveBeenCalledWith("config");
         expect(migrateFnMock).toHaveBeenCalledWith(
           existingValue,
-          expect.any(Array)
+          expect.any(Array),
         );
         expect(setItemMock).toHaveBeenCalledWith(
           "config",
-          JSON.stringify(migrated)
+          JSON.stringify(migrated),
         );
         expect(res).toEqual(migrated);
 
@@ -223,11 +224,11 @@ describe("local-storage-with-schema.ts", () => {
         expect(getItemMock).toHaveBeenCalledWith("config");
         expect(migrateFnMock).toHaveBeenCalledWith(
           existingValue,
-          expect.any(Array)
+          expect.any(Array),
         );
         expect(setItemMock).toHaveBeenCalledWith(
           "config",
-          JSON.stringify(defaultObject)
+          JSON.stringify(defaultObject),
         );
         expect(res).toEqual(defaultObject);
 

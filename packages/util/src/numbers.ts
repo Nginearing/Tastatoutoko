@@ -1,3 +1,8 @@
+//pin implementations
+const random = Math.random;
+const ceil = Math.ceil;
+const floor = Math.floor;
+
 /**
  * Rounds a number to one decimal places.
  * @param num The number to round.
@@ -26,7 +31,7 @@ export function stdDev(array: number[]): number {
     const n = array.length;
     const mean = array.reduce((a, b) => a + b) / n;
     return Math.sqrt(
-      array.map((x) => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / n
+      array.map((x) => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / n,
     );
   } catch (e) {
     return 0;
@@ -85,9 +90,9 @@ export function kogasa(cov: number): number {
  * @returns Random integer betwen min and max.
  */
 export function randomIntFromRange(min: number, max: number): number {
-  const minNorm = Math.ceil(min);
-  const maxNorm = Math.floor(max);
-  return Math.floor(Math.random() * (maxNorm - minNorm + 1) + minNorm);
+  const minNorm = ceil(min);
+  const maxNorm = floor(max);
+  return floor(random() * (maxNorm - minNorm + 1) + minNorm);
 }
 
 /**
@@ -106,7 +111,7 @@ export function mapRange(
   inMax: number,
   outMin: number,
   outMax: number,
-  clamp = true
+  clamp = true,
 ): number {
   if (inMin === inMax) {
     return outMin;
@@ -144,7 +149,7 @@ export function isSafeNumber(value: unknown): value is number {
  * @returns The input number if it is safe, undefined otherwise.
  */
 export function safeNumber(
-  value: number | undefined | null
+  value: number | undefined | null,
 ): number | undefined {
   if (isSafeNumber(value)) {
     return value;

@@ -1,7 +1,7 @@
 ### **Table of Contents**
 
 - [Forking Monkeytype](#forking-monkeytype)
-- [Creating Layouts](#creating-layouts  )
+- [Creating Layouts](#creating-layouts)
 - [Committing Layouts](#committing-layouts)
 
 ### Forking Monkeytype
@@ -21,42 +21,89 @@ The contents of the file should be as follows:
   "keymapShowTopRow": false,
   "type": "ansi",
   "keys": {
-    "row1": ["`~", "1!", "2@", "3#", "4$", "5%", "6^", "7&", "8*", "9(", "0)", "-_", "=+"],
-    "row2": ["qQ", "wW", "eE", "rR", "tT", "yY", "uU", "iI", "oO", "pP", "[{", "]}", "\\|"],
-    "row3": ["aA", "sS", "dD", "fF", "gG", "hH", "jJ", "kK", "lL", ";:", "'\""],
-    "row4": ["zZ", "xX", "cC", "vV", "bB", "nN", "mM", ",<", ".>", "/?"],
-    "row5": [" "]
+    "row1": [
+      ["`", "~"],
+      ["1", "!"],
+      ["2", "@"],
+      ["3", "#"],
+      ["4", "$"],
+      ["5", "%"],
+      ["6", "^"],
+      ["7", "&"],
+      ["8", "*"],
+      ["9", "("],
+      ["0", ")"],
+      ["-", "_"],
+      ["=", "+"]
+    ],
+    "row2": [
+      ["q", "Q"],
+      ["w", "W"],
+      ["e", "E"],
+      ["r", "R"],
+      ["t", "T"],
+      ["y", "Y"],
+      ["u", "U"],
+      ["i", "I"],
+      ["o", "O"],
+      ["p", "P"],
+      ["[", "{"],
+      ["]", "}"],
+      ["\\", "|"]
+    ],
+    "row3": [
+      ["a", "A"],
+      ["s", "S"],
+      ["d", "D"],
+      ["f", "F"],
+      ["g", "G"],
+      ["h", "H"],
+      ["j", "J"],
+      ["k", "K"],
+      ["l", "L"],
+      [";", ":"],
+      ["'", "\""]
+    ],
+    "row4": [
+      ["z", "Z"],
+      ["x", "X"],
+      ["c", "C"],
+      ["v", "V"],
+      ["b", "B"],
+      ["n", "N"],
+      ["m", "M"],
+      [",", "<"],
+      [".", ">"],
+      ["/", "?"]
+    ],
+    "row5": [[" "]]
   }
 }
-
 ```
 
 It is recommended that you familiarize yourselves with JSON before adding a layout.
 
 `keymapShowTopRow` indicates whether to always show the first row of the layout.
-`type` can be `ansi` or  `iso`.
+`type` can be `ansi` or `iso`.
 
-In `keys` you need to specify `row1` to  `row5`. Add the keys within the row as string. The string can have up to four character. The character define unshifted, shifted, alt-gr and shifted alt-gr character in this order. For example `eE€` defines `e` on regular key press, `E` if `shift` is held and `€` if `alt-gr` is held.
+In `keys` you need to specify `row1` to `row5`. Add the keys within the row as string-array. The string-array can have up to four character. The character define unshifted, shifted, alt-gr and shifted alt-gr character in this order. For example `["e","E","€"]` defines `e` on regular key press, `E` if `shift` is held and `€` if `alt-gr` is held.
 
-**Note:**  Quote and backslash characters need to be escaped: `\"` and `\\`.
+**Note:** Quote and backslash characters need to be escaped: `\"` and `\\`.
 
 For ansi layouts the number of keys need to be exactly thirteen for `row1` and `row2`, eleven for `row3`, ten for `row4` and one or two for `row5`.
 
-For iso the number of keys need to be exactly thirteen for `row1`, twelve for `row2` and  `row3`, eleven for `row4` and one or two for `row5`.
+For iso the number of keys need to be exactly thirteen for `row1`, twelve for `row2` and `row3`, eleven for `row4` and one or two for `row5`.
 
-
-
-In addition to the layout file you need to add your layout to the `packages/contracts/src/schemas/layouts.ts` file. Just append your layout name (without the `.json`) at the __end__ of the `LayoutNameSchema`. Remember to add a comma like this:
+In addition to the layout file you need to add your layout to the `packages/schemas/src/layouts.ts` file. Just append your layout name (without the `.json`) at the **end** of the `LayoutNameSchema`. Remember to add a comma like this:
 
 ```ts
-  export const LayoutNameSchema = z.enum([
-    "qwerty",
-    "dvorak",
-    "colemak",
-    ...
-    "your_layout_name",
+export const LayoutNameSchema = z.enum([
+  "qwerty",
+  "dvorak",
+  "colemak",
+  ..."your_layout_name",
 ]);
-``` 
+```
 
 ### Committing Layouts
 

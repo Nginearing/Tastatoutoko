@@ -1,11 +1,20 @@
 import AnimatedModal, { HideOptions, ShowOptions } from "./animated-modal";
 import { Attributes, buildTag } from "./tag-builder";
 import { format as dateFormat } from "date-fns/format";
-import * as Loader from "../elements/loader";
+
+import { showLoaderBar, hideLoaderBar } from "../signals/loader-bar";
 import * as Notifications from "../elements/notifications";
 import * as ConnectionState from "../states/connection";
-import { InputIndicator } from "../elements/input-indicator";
-import { debounce } from "throttle-debounce";
+import {
+  IsValidResponse,
+  ValidatedHtmlInputElement,
+  Validation,
+  ValidationOptions,
+  ValidationResult,
+} from "../elements/input-validation";
+import { ElementWithUtils, qsr } from "./dom";
+
+const simpleModalEl = qsr<HTMLDialogElement>("#simpleModal");
 
 type CommonInput<TType, TValue> = {
   type: TType;
@@ -21,12 +30,7 @@ type CommonInput<TType, TValue> = {
    * If the schema is defined it is always checked first.
    * Only if the schema validaton is passed or missing the `isValid` method is called.
    */
-  validation?: {
-    /**
-     * Zod schema to validate the input value against.
-     * The indicator will show the error messages from the schema.
-     */
-    schema?: Zod.Schema<TValue>;
+  validation?: Omit<Validation<string>, "isValid"> & {
     /**
      * Custom async validation method.
      * This is intended to be used for validations that cannot be handled with a Zod schema like server-side validations.
@@ -34,7 +38,10 @@ type CommonInput<TType, TValue> = {
      * @param thisPopup the current modal
      * @returns true if the `value` is valid, an errorMessage as string if it is invalid.
      */
-    isValid?: (value: string, thisPopup: SimpleModal) => Promise<true | string>;
+    isValid?: (
+      value: string,
+      thisPopup: SimpleModal,
+    ) => Promise<IsValidResponse>;
   };
 };
 
@@ -87,10 +94,11 @@ export type ExecReturn = {
   notificationOptions?: Notifications.AddNotificationOptions;
   hideOptions?: HideOptions;
   afterHide?: () => void;
+  alwaysHide?: boolean;
 };
 
 type FormInput = CommonInputType & {
-  indicator?: InputIndicator;
+  hasError?: boolean;
   currentValue: () => string;
 };
 type SimpleModalOptions = {
@@ -107,12 +115,13 @@ type SimpleModalOptions = {
   onlineOnly?: boolean;
   hideCallsExec?: boolean;
   showLabels?: boolean;
+  afterClickAway?: () => void;
 };
 
 export class SimpleModal {
   parameters: string[];
-  wrapper: HTMLElement;
-  element: HTMLElement;
+  wrapper: ElementWithUtils<HTMLDialogElement>;
+  element: ElementWithUtils;
   modal: AnimatedModal;
   id: string;
   title: string;
@@ -127,6 +136,7 @@ export class SimpleModal {
   onlineOnly: boolean;
   hideCallsExec: boolean;
   showLabels: boolean;
+  afterClickAway: (() => void) | undefined;
   constructor(options: SimpleModalOptions) {
     this.parameters = [];
     this.id = options.id;
@@ -145,61 +155,57 @@ export class SimpleModal {
     this.onlineOnly = options.onlineOnly ?? false;
     this.hideCallsExec = options.hideCallsExec ?? false;
     this.showLabels = options.showLabels ?? false;
+    this.afterClickAway = options.afterClickAway;
   }
   reset(): void {
-    this.element.innerHTML = `
+    this.element.setHtml(`
     <div class="title"></div>
     <div class="inputs"></div>
     <div class="text"></div>
-    <button type="submit" class="submitButton"></button>`;
+    <button type="submit" class="submitButton"></button>`);
   }
 
   init(): void {
-    const el = $(this.element);
-    el.find("input").val("");
     this.reset();
-    el.attr("data-popup-id", this.id);
-    el.find(".title").text(this.title);
+    this.element.setAttribute("data-popup-id", this.id);
+    this.element.qs(".title")?.setText(this.title);
     if (this.textAllowHtml) {
-      el.find(".text").html(this.text ?? "");
+      this.element.qs(".text")?.setHtml(this.text ?? "");
     } else {
-      el.find(".text").text(this.text ?? "");
+      this.element.qs(".text")?.setText(this.text ?? "");
     }
 
     this.initInputs();
 
     if (this.buttonText === "") {
-      el.find(".submitButton").remove();
+      this.element.qs(".submitButton")?.remove();
     } else {
-      el.find(".submitButton").text(this.buttonText);
+      this.element.qs(".submitButton")?.setText(this.buttonText);
+      this.updateSubmitButtonState();
     }
 
     if ((this.text ?? "") === "") {
-      el.find(".text").addClass("hidden");
+      this.element.qs(".text")?.hide();
     } else {
-      el.find(".text").removeClass("hidden");
+      this.element.qs(".text")?.show();
     }
-
-    // }
   }
 
   initInputs(): void {
-    const el = $(this.element);
-
     const allInputsHidden = this.inputs.every((i) => i.hidden);
     if (allInputsHidden || this.inputs.length === 0) {
-      el.find(".inputs").addClass("hidden");
+      this.element.qs(".inputs")?.hide();
       return;
     }
 
-    const inputs = el.find(".inputs");
-    if (this.showLabels) inputs.addClass("withLabel");
+    const inputsEl = this.element.qs(".inputs");
+    if (this.showLabels) inputsEl?.addClass("withLabel");
 
     this.inputs.forEach((input, index) => {
       const id = `${this.id}_${index}`;
 
       if (this.showLabels && !input.hidden) {
-        inputs.append(`<label for="${id}">${input.label ?? ""}</label>`);
+        inputsEl?.appendHtml(`<label for="${id}">${input.label ?? ""}</label>`);
       }
 
       const tagname = input.type === "textarea" ? "textarea" : "input";
@@ -222,13 +228,13 @@ export class SimpleModal {
       }
 
       if (input.type === "textarea") {
-        inputs.append(
+        inputsEl?.appendHtml(
           buildTag({
             tagname,
             classes,
             attributes,
             innerHTML: input.initVal,
-          })
+          }),
         );
       } else if (input.type === "checkbox") {
         let html = buildTag({ tagname, classes, attributes });
@@ -246,9 +252,9 @@ export class SimpleModal {
         } else {
           html = `<div>${html}</div>`;
         }
-        inputs.append(html);
+        inputsEl?.appendHtml(html);
       } else if (input.type === "range") {
-        inputs.append(`
+        inputsEl?.appendHtml(`
           <div>
             ${buildTag({
               tagname,
@@ -275,19 +281,19 @@ export class SimpleModal {
             if (input.min !== undefined) {
               attributes["min"] = dateFormat(
                 input.min,
-                "yyyy-MM-dd'T'HH:mm:ss"
+                "yyyy-MM-dd'T'HH:mm:ss",
               );
             }
             if (input.max !== undefined) {
               attributes["max"] = dateFormat(
                 input.max,
-                "yyyy-MM-dd'T'HH:mm:ss"
+                "yyyy-MM-dd'T'HH:mm:ss",
               );
             }
             if (input.initVal !== undefined) {
               attributes["value"] = dateFormat(
                 input.initVal,
-                "yyyy-MM-dd'T'HH:mm:ss"
+                "yyyy-MM-dd'T'HH:mm:ss",
               );
             }
             break;
@@ -310,119 +316,71 @@ export class SimpleModal {
             break;
           }
         }
-        inputs.append(buildTag({ tagname, classes, attributes }));
+        inputsEl?.appendHtml(buildTag({ tagname, classes, attributes }));
       }
-      const element = document.querySelector(
-        "#" + attributes["id"]
-      ) as HTMLInputElement;
+      const element = qsr<HTMLInputElement>("#" + attributes["id"]);
 
-      if (input.oninput !== undefined) {
-        element.oninput = input.oninput;
-      }
+      const originalOnInput = element.native.oninput;
+      element.native.oninput = (e) => {
+        if (originalOnInput) originalOnInput.call(element.native, e);
+        input.oninput?.(e);
+        this.updateSubmitButtonState();
+      };
 
       input.currentValue = () => {
-        if (element.type === "checkbox")
-          return element.checked ? "true" : "false";
-        return element.value;
+        if (element.native.type === "checkbox") {
+          return element.native.checked ? "true" : "false";
+        }
+        return element.native.value;
       };
 
       if (input.validation !== undefined) {
-        const indicator = new InputIndicator(element, {
-          valid: {
-            icon: "fa-check",
-            level: 1,
+        const options: ValidationOptions<string> = {
+          schema: input.validation.schema ?? undefined,
+          isValid:
+            input.validation.isValid !== undefined
+              ? async (val: string) => {
+                  //@ts-expect-error this is fine
+                  return input.validation.isValid(val, this);
+                }
+              : undefined,
+
+          callback: (result: ValidationResult) => {
+            input.hasError = result.status !== "success";
+
+            this.updateSubmitButtonState();
           },
-          invalid: {
-            icon: "fa-times",
-            level: -1,
-          },
-          checking: {
-            icon: "fa-circle-notch",
-            spinIcon: true,
-            level: 0,
-          },
-        });
-        input.indicator = indicator;
-
-        const debouceIsValid = debounce(1000, async (value: string) => {
-          const result = await input.validation?.isValid?.(value, this);
-
-          if (element.value !== value) {
-            //value of the input has changed in the meantime. discard
-            return;
-          }
-
-          if (result === true) {
-            indicator.show("valid");
-          } else {
-            indicator.show("invalid", result);
-          }
-        });
-
-        const validateInput = async (value: string): Promise<void> => {
-          if (value === undefined || value === "") {
-            indicator.hide();
-            return;
-          }
-          if (input.validation?.schema !== undefined) {
-            const schemaResult = input.validation.schema.safeParse(value);
-            if (!schemaResult.success) {
-              indicator.show(
-                "invalid",
-                schemaResult.error.errors.map((err) => err.message).join(", ")
-              );
-              return;
-            }
-          }
-
-          if (input.validation?.isValid !== undefined) {
-            indicator.show("checking");
-            void debouceIsValid(value);
-            return;
-          }
-
-          indicator.show("valid");
+          debounceDelay: input.validation.debounceDelay,
         };
 
-        element.oninput = async (event) => {
-          const value = (event.target as HTMLInputElement).value;
-          await validateInput(value);
-
-          //call original handler if defined
-          input.oninput?.(event);
-        };
+        new ValidatedHtmlInputElement(element, options);
       }
     });
 
-    el.find(".inputs").removeClass("hidden");
+    this.element.qs(".inputs")?.show();
   }
 
   exec(): void {
     if (!this.canClose) return;
-
-    if (
-      this.inputs
-        .filter((i) => i.hidden !== true && i.optional !== true)
-        .some((v) => v.currentValue() === undefined || v.currentValue() === "")
-    ) {
+    if (this.hasMissingRequired()) {
       Notifications.add("Please fill in all fields", 0);
       return;
     }
 
-    if (this.inputs.some((i) => i.indicator?.get() === "invalid")) {
+    if (this.hasValidationErrors()) {
       Notifications.add("Please solve all validation errors", 0);
       return;
     }
 
     this.disableInputs();
-    Loader.show();
+    showLoaderBar();
     const vals: string[] = this.inputs.map((it) => it.currentValue());
     void this.execFn(this, ...vals).then((res) => {
-      Loader.hide();
+      hideLoaderBar();
       if (res.showNotification ?? true) {
         Notifications.add(res.message, res.status, res.notificationOptions);
       }
-      if (res.status === 1) {
+      if (res.status === 1 || res.alwaysHide) {
         void this.hide(true, res.hideOptions).then(() => {
           if (res.afterHide) {
             res.afterHide();
@@ -430,25 +388,23 @@ export class SimpleModal {
         });
       } else {
         this.enableInputs();
-        $($("#simpleModal").find("input")[0] as HTMLInputElement).trigger(
-          "focus"
-        );
+        simpleModalEl.qsa("input")[0]?.focus();
       }
     });
   }
 
   disableInputs(): void {
-    $("#simpleModal input").prop("disabled", true);
-    $("#simpleModal button").prop("disabled", true);
-    $("#simpleModal textarea").prop("disabled", true);
-    $("#simpleModal .checkbox").addClass("disabled");
+    simpleModalEl.qsa("input").disable();
+    simpleModalEl.qsa("button").disable();
+    simpleModalEl.qsa("textarea").disable();
+    simpleModalEl.qsa(".checkbox").addClass("disabled");
   }
 
   enableInputs(): void {
-    $("#simpleModal input").prop("disabled", false);
-    $("#simpleModal button").prop("disabled", false);
-    $("#simpleModal textarea").prop("disabled", false);
-    $("#simpleModal .checkbox").removeClass("disabled");
+    simpleModalEl.qsa("input").enable();
+    simpleModalEl.qsa("button").enable();
+    simpleModalEl.qsa("textarea").enable();
+    simpleModalEl.qsa(".checkbox").removeClass("disabled");
   }
 
   show(parameters: string[] = [], showOptions: ShowOptions): void {
@@ -478,6 +434,27 @@ export class SimpleModal {
       await modal.hide(hideOptions);
     }
   }
+
+  hasMissingRequired(): boolean {
+    return this.inputs
+      .filter((i) => i.hidden !== true && i.optional !== true)
+      .some((v) => v.currentValue() === undefined || v.currentValue() === "");
+  }
+
+  hasValidationErrors(): boolean {
+    return this.inputs.some((i) => i.hasError === true);
+  }
+
+  updateSubmitButtonState(): void {
+    const button = this.element.qs<HTMLButtonElement>(".submitButton");
+    if (button === null) return;
+
+    if (this.hasMissingRequired() || this.hasValidationErrors()) {
+      button.disable();
+    } else {
+      button.enable();
+    }
+  }
 }
 
 function hide(): void {
@@ -492,7 +469,7 @@ let activePopup: SimpleModal | null = null;
 const modal = new AnimatedModal({
   dialogId: "simpleModal",
   setup: async (modalEl): Promise<void> => {
-    modalEl.addEventListener("submit", (e) => {
+    modalEl.on("submit", (e) => {
       e.preventDefault();
       activePopup?.exec();
     });
@@ -501,6 +478,7 @@ const modal = new AnimatedModal({
     hide();
   },
   customWrapperClickHandler: (e): void => {
+    activePopup?.afterClickAway?.();
     hide();
   },
 });

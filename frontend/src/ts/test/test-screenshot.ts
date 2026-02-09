@@ -1,63 +1,61 @@
-import * as Loader from "../elements/loader";
+import { showLoaderBar, hideLoaderBar } from "../signals/loader-bar";
 import * as Replay from "./replay";
 import * as Misc from "../utils/misc";
 import { isAuthenticated } from "../firebase";
 import { getActiveFunboxesWithFunction } from "./funbox/list";
 import * as DB from "../db";
-import * as ThemeColors from "../elements/theme-colors";
 import { format } from "date-fns/format";
-
+import { getActivePage, setIsScreenshotting } from "../signals/core";
 import { getHtmlByUserFlags } from "../controllers/user-flag-controller";
 import * as Notifications from "../elements/notifications";
 import { convertRemToPixels } from "../utils/numbers";
-
-async function gethtml2canvas(): Promise<typeof import("html2canvas").default> {
-  return (await import("html2canvas")).default;
-}
+import * as TestState from "./test-state";
+import { qs, qsa } from "../utils/dom";
+import { getTheme } from "../signals/theme";
 
 let revealReplay = false;
 let revertCookie = false;
 
 function revert(): void {
-  Loader.hide();
-  $("#ad-result-wrapper").removeClass("hidden");
-  $("#ad-result-small-wrapper").removeClass("hidden");
-  $("#testConfig").removeClass("hidden");
-  $(".pageTest .screenshotSpacer").remove();
-  $("#notificationCenter").removeClass("hidden");
-  $("#commandLineMobileButton").removeClass("hidden");
-  $(".pageTest .ssWatermark").addClass("hidden");
-  $(".pageTest .ssWatermark").text("monkeytype.com"); // Reset watermark text
-  $(".pageTest .buttons").removeClass("hidden");
-  $("noscript").removeClass("hidden");
-  $("#nocss").removeClass("hidden");
-  $("header, footer").removeClass("invisible");
-  $("#result").removeClass("noBalloons");
-  $(".wordInputHighlight").removeClass("hidden");
-  $(".highlightContainer").removeClass("hidden");
-  if (revertCookie) $("#cookiesModal").removeClass("hidden");
-  if (revealReplay) $("#resultReplay").removeClass("hidden");
+  setIsScreenshotting(false);
+  hideLoaderBar();
+  qs("#ad-result-wrapper")?.show();
+  qs("#ad-result-small-wrapper")?.show();
+  qs("#testConfig")?.show();
+  qs(".pageTest .screenshotSpacer")?.remove();
+  qs("#notificationCenter")?.show();
+  qs(".pageTest .ssWatermark")?.hide();
+  qs(".pageTest .ssWatermark")?.setText("monkeytype.com"); // Reset watermark text
+  qs(".pageTest .buttons")?.show();
+  qs("noscript")?.show();
+  qs("#nocss")?.show();
+  qs("header")?.removeClass("invisible");
+  qs("#result")?.removeClass("noBalloons");
+  qs(".wordInputHighlight")?.show();
+  qsa(".highlightContainer")?.show();
+  if (revertCookie) qs("#cookiesModal")?.show();
+  if (revealReplay) qs("#resultReplay")?.show();
   if (!isAuthenticated()) {
-    $(".pageTest .loginTip").removeClass("hidden");
+    qs(".pageTest .loginTip")?.removeClass("hidden");
   }
-  (document.querySelector("html") as HTMLElement).style.scrollBehavior =
-    "smooth";
+  qs("html")?.setStyle({ scrollBehavior: "smooth" });
   for (const fb of getActiveFunboxesWithFunction("applyGlobalCSS")) {
     fb.functions.applyGlobalCSS();
   }
 }
 
-let firefoxClipboardNotificatoinShown = false;
+let firefoxClipboardNotificationShown = false;
 
 /**
- * Prepares UI, generates screenshot canvas using html2canvas, and reverts UI changes.
+ * Prepares UI, generates screenshot canvas using modern-screenshot, and reverts UI changes.
  * Returns the generated canvas element or null on failure.
  * Handles its own loader and basic error notifications for canvas generation.
  */
 async function generateCanvas(): Promise<HTMLCanvasElement | null> {
-  Loader.show();
+  const { domToCanvas } = await import("modern-screenshot");
+  showLoaderBar(true);
 
-  if (!$("#resultReplay").hasClass("hidden")) {
+  if (!qs("#resultReplay")?.hasClass("hidden")) {
     revealReplay = true;
     Replay.pauseReplay();
   }
@@ -70,8 +68,8 @@ async function generateCanvas(): Promise<HTMLCanvasElement | null> {
 
   // --- UI Preparation ---
   const dateNow = new Date(Date.now());
-  $("#resultReplay").addClass("hidden");
-  $(".pageTest .ssWatermark").removeClass("hidden");
+  qs("#resultReplay")?.hide();
+  qs(".pageTest .ssWatermark")?.show();
 
   const snapshot = DB.getSnapshot();
   const ssWatermark = [format(dateNow, "dd MMM yyyy HH:mm"), "monkeytype.com"];
@@ -81,78 +79,158 @@ async function generateCanvas(): Promise<HTMLCanvasElement | null> {
     })}`;
     ssWatermark.unshift(userText);
   }
-  $(".pageTest .ssWatermark").html(
+  qs(".pageTest .ssWatermark")?.setHtml(
     ssWatermark
       .map((el) => `<span>${el}</span>`)
-      .join("<span class='pipe'>|</span>")
+      .join("<span class='pipe'>|</span>"),
   );
-  $(".pageTest .buttons").addClass("hidden");
-  $("#notificationCenter").addClass("hidden");
-  $("#commandLineMobileButton").addClass("hidden");
-  $(".pageTest .loginTip").addClass("hidden");
-  $("noscript").addClass("hidden");
-  $("#nocss").addClass("hidden");
-  $("#ad-result-wrapper").addClass("hidden");
-  $("#ad-result-small-wrapper").addClass("hidden");
-  $("#testConfig").addClass("hidden");
+
+  setIsScreenshotting(true);
+  qs(".pageTest .buttons")?.hide();
+  qs("#notificationCenter")?.hide();
+  qs(".pageTest .loginTip")?.hide();
+  qs("noscript")?.hide();
+  qs("#nocss")?.hide();
+  qs("#ad-result-wrapper")?.hide();
+  qs("#ad-result-small-wrapper")?.hide();
+  qs("#testConfig")?.hide();
   // Ensure spacer is removed before adding a new one if function is called rapidly
-  $(".pageTest .screenshotSpacer").remove();
-  $(".page.pageTest").prepend("<div class='screenshotSpacer'></div>");
-  $("header, footer").addClass("invisible");
-  $("#result").addClass("noBalloons");
-  $(".wordInputHighlight").addClass("hidden");
-  $(".highlightContainer").addClass("hidden");
-  if (revertCookie) $("#cookiesModal").addClass("hidden");
+  qs(".pageTest .screenshotSpacer")?.remove();
+  qs(".page.pageTest")?.prependHtml("<div class='screenshotSpacer'></div>");
+  qs("header")?.addClass("invisible");
+  qs("#result")?.addClass("noBalloons");
+  qs(".wordInputHighlight")?.hide();
+  qsa(".highlightContainer")?.hide();
+  if (revertCookie) qs("#cookiesModal")?.hide();
 
   for (const fb of getActiveFunboxesWithFunction("clearGlobal")) {
     fb.functions.clearGlobal();
   }
 
   (document.querySelector("html") as HTMLElement).style.scrollBehavior = "auto";
-  window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior }); // Use instant scroll
+  window.scrollTo({ top: 0, behavior: "auto" });
 
   // --- Target Element Calculation ---
-  const src = $("#result .wrapper");
-  if (!src.length) {
+  const src = qs("#result .wrapper");
+  if (src === null) {
     console.error("Result wrapper not found for screenshot");
     Notifications.add("Screenshot target element not found", -1);
     revert();
     return null;
   }
-  // Ensure offset calculations happen *after* potential layout shifts from UI prep
-  await new Promise((resolve) => setTimeout(resolve, 50)); // Small delay for render updates
+  // Wait a frame to ensure all UI changes are rendered
+  await new Promise((resolve) => requestAnimationFrame(resolve));
 
-  const sourceX = src.offset()?.left ?? 0;
-  const sourceY = src.offset()?.top ?? 0;
-  const sourceWidth = src.outerWidth(true) as number;
-  const sourceHeight = src.outerHeight(true) as number;
+  const sourceX = src.screenBounds().left ?? 0;
+  const sourceY = src.screenBounds().top ?? 0;
 
-  // --- Canvas Generation ---
+  const sourceWidth = src.getOuterWidth();
+  const sourceHeight = src.getOuterHeight();
+  const paddingX = convertRemToPixels(2);
+  const paddingY = convertRemToPixels(2);
+
   try {
-    const paddingX = convertRemToPixels(2);
-    const paddingY = convertRemToPixels(2);
+    // Compute full-document render size to keep the target area in frame on small viewports
+    const root = document.documentElement;
+    const { scrollWidth, clientWidth, scrollHeight, clientHeight } = root;
+    const targetWidth = Math.max(scrollWidth, clientWidth);
+    const targetHeight = Math.max(scrollHeight, clientHeight);
 
-    const canvas = await (
-      await gethtml2canvas()
-    )(document.body, {
-      backgroundColor: await ThemeColors.get("bg"),
-      width: sourceWidth + paddingX * 2,
-      height: sourceHeight + paddingY * 2,
-      x: sourceX - paddingX,
-      y: sourceY - paddingY,
-      logging: false, // Suppress html2canvas logs in console
-      useCORS: true, // May be needed if user flags/icons are external
+    // Target the HTML root to include .customBackground
+    const fullCanvas = await domToCanvas(root, {
+      backgroundColor: getTheme().bg,
+      // Sharp output
+      scale: window.devicePixelRatio ?? 1,
+      style: {
+        width: `${targetWidth}px`,
+        height: `${targetHeight}px`,
+        overflow: "hidden", // for scrollbar in small viewports
+      },
+      // Fetch (for custom background URLs)
+      fetch: {
+        requestInit: { mode: "cors", credentials: "omit" },
+        bypassingCache: true,
+      },
+
+      // skipping hidden elements (THAT IS SO IMPORTANT!)
+      filter: (el: Node): boolean => {
+        if (!(el instanceof HTMLElement)) return true;
+        const cs = getComputedStyle(el);
+        return !(el.classList.contains("hidden") || cs.display === "none");
+      },
+      // Normalize the background layer so its negative z-index doesn't get hidden
+      onCloneEachNode: (cloned) => {
+        if (cloned instanceof HTMLElement) {
+          const el = cloned;
+          if (el.classList.contains("customBackground")) {
+            el.style.zIndex = "0";
+            el.style.width = `${targetWidth}px`;
+            el.style.height = `${targetHeight}px`;
+            // for the inner image scales
+            const img = el.querySelector("img");
+            if (img) {
+              // (<= 720px viewport width) wpm & acc text wrapper!!
+              if (window.innerWidth <= 720) {
+                img.style.transform = "translateY(20vh)";
+                img.style.height = "100%";
+              } else {
+                img.style.width = "100%"; // safety nothing more
+                img.style.height = "100%"; // for image fit full screen even when words history is opened with many lines
+              }
+            }
+          }
+        }
+      },
     });
 
-    revert(); // Revert UI *after* canvas is successfully generated
+    // Scale and create output canvas
+    const scale = fullCanvas.width / targetWidth;
+    const paddedWidth = sourceWidth + paddingX * 2;
+    const paddedHeight = sourceHeight + paddingY * 2;
+
+    const scaledPaddedWCanvas = Math.round(paddedWidth * scale);
+    const scaledPaddedHCanvas = Math.round(paddedHeight * scale);
+    const scaledPaddedWForCrop = Math.ceil(paddedWidth * scale);
+    const scaledPaddedHForCrop = Math.ceil(paddedHeight * scale);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = scaledPaddedWCanvas;
+    canvas.height = scaledPaddedHCanvas;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      Notifications.add("Failed to get canvas context for screenshot", -1);
+      return null;
+    }
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    // Calculate crop coordinates with proper clamping
+    const cropX = Math.max(0, Math.floor((sourceX - paddingX) * scale));
+    const cropY = Math.max(0, Math.floor((sourceY - paddingY) * scale));
+    const cropW = Math.min(scaledPaddedWForCrop, fullCanvas.width - cropX);
+    const cropH = Math.min(scaledPaddedHForCrop, fullCanvas.height - cropY);
+
+    ctx.drawImage(
+      fullCanvas,
+      cropX,
+      cropY,
+      cropW,
+      cropH,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
     return canvas;
   } catch (e) {
     Notifications.add(
       Misc.createErrorMessage(e, "Error creating screenshot canvas"),
-      -1
+      -1,
     );
-    revert(); // Ensure UI is reverted on error
     return null;
+  } finally {
+    revert(); // Ensure UI is reverted on both success and error
   }
 }
 
@@ -180,7 +258,7 @@ export async function copyToClipboard(): Promise<void> {
         Object.defineProperty({}, blob.type, {
           value: blob,
           enumerable: true,
-        })
+        }),
       );
       await navigator.clipboard.write([clipItem]);
       Notifications.add("Copied screenshot to clipboard", 1, { duration: 2 });
@@ -191,13 +269,13 @@ export async function copyToClipboard(): Promise<void> {
       // Firefox specific message (only show once)
       if (
         navigator.userAgent.toLowerCase().includes("firefox") &&
-        !firefoxClipboardNotificatoinShown
+        !firefoxClipboardNotificationShown
       ) {
-        firefoxClipboardNotificatoinShown = true;
+        firefoxClipboardNotificationShown = true;
         Notifications.add(
           "On Firefox you can enable the asyncClipboard.clipboardItem permission in about:config to enable copying straight to the clipboard",
           0,
-          { duration: 10 }
+          { duration: 10 },
         );
       }
 
@@ -205,7 +283,7 @@ export async function copyToClipboard(): Promise<void> {
       Notifications.add(
         "Could not copy screenshot to clipboard. Opening in new tab instead (make sure popups are allowed)",
         0,
-        { duration: 5 }
+        { duration: 5 },
       );
       try {
         // Fallback: Open blob in a new tab
@@ -275,10 +353,31 @@ export async function download(): Promise<void> {
   }
 }
 
-$(".pageTest").on("click", "#saveScreenshotButton", (event) => {
+qs(".pageTest")?.onChild("click", "#saveScreenshotButton", (event) => {
   if (event.shiftKey) {
     void download();
   } else {
     void copyToClipboard();
   }
+
+  // reset save screenshot button icon
+  qs("#saveScreenshotButton i")
+    ?.removeClass(["fas", "fa-download"])
+    ?.addClass(["far", "fa-image"]);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!(TestState.resultVisible && getActivePage() === "test")) return;
+  if (event.key !== "Shift") return;
+  qs("#result #saveScreenshotButton i")
+    ?.removeClass(["far", "fa-image"])
+    ?.addClass(["fas", "fa-download"]);
+});
+
+document.addEventListener("keyup", (event) => {
+  if (!(TestState.resultVisible && getActivePage() === "test")) return;
+  if (event.key !== "Shift") return;
+  qs("#result #saveScreenshotButton i")
+    ?.removeClass(["fas", "fa-download"])
+    ?.addClass(["far", "fa-image"]);
 });

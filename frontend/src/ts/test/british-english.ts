@@ -652,22 +652,57 @@ const replacementRules: BritishEnglishReplacements = {
   moisturizing: "moisturising",
   favoring: "favouring",
   marvelous: "marvellous",
+  hematuria: "haematuria",
+  hemoptysis: "haemoptysis",
+  hemorrhoid: "haemorrhoid",
+  hemorrhagic: "haemorrhagic",
+  hypercalcemia: "hypercalcaemia",
+  hyperglycemia: "hyperglycaemia",
+  hypoglycemia: "hypoglycaemia",
+  toxemia: "toxaemia",
+  hypoxemia: "hypoxaemia",
+  bacteremia: "bacteraemia",
+  hypernatremia: "hypernatraemia",
+  hyponatremia: "hyponatraemia",
+  leukocytosis: "leucocytosis",
+  leukocyte: "leucocyte",
+  leukopenia: "leucopenia",
+  apnea: "apnoea",
+  bradypnea: "bradypnoea",
+  tachypnea: "tachypnoea",
+  orthopnea: "orthopnoea",
+  ileocecal: "ileocaecal",
+  metastasize: "metastasise",
+  lymphedema: "lymphoedema",
+  neuron: "neurone",
+  hemianopsia: "hemianopia",
+  galactorrhea: "galactorrhoea",
+  nebulizer: "nebuliser",
+  paresthesia: "paraesthesia",
 };
 
 export async function replace(
   word: string,
-  previousWord: string
+  previousWord: string,
 ): Promise<string> {
+  // Convert American-style double quotes to British-style single quotes
+  if (word.includes('"')) {
+    word = word.replace(/"/g, "'");
+  }
+
   if (word.includes("-")) {
     //this handles hyphenated words (for example "cream-colored") to make sure
     //we don't have to add every possible combination to the list
     return (
       await Promise.all(
-        word.split("-").map(async (w) => replace(w, previousWord))
+        word.split("-").map(async (w) => replace(w, previousWord)),
       )
     ).join("-");
   } else {
     const cleanedWord = word.replace(/^[\W]+|[\W]+$/g, "").toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(replacementRules, cleanedWord)) {
+      return word;
+    }
     const rule = replacementRules[cleanedWord];
 
     if (rule === undefined) return word;
@@ -690,7 +725,7 @@ export async function replace(
             ? britishWord.toUpperCase()
             : capitalizeFirstLetterOfEachWord(britishWord)
           : britishWord) +
-        $3
+        $3,
     );
   }
 }

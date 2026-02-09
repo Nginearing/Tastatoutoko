@@ -9,11 +9,7 @@ import { ObjectId } from "mongodb";
 import * as LeaderboardDal from "../../dal/leaderboards";
 import MonkeyError from "../../utils/error";
 
-import {
-  Mode,
-  PersonalBest,
-  PersonalBests,
-} from "@monkeytype/contracts/schemas/shared";
+import { Mode, PersonalBest, PersonalBests } from "@monkeytype/schemas/shared";
 import {
   GenerateDataRequest,
   GenerateDataResponse,
@@ -22,7 +18,7 @@ import { roundTo2 } from "@monkeytype/util/numbers";
 import { MonkeyRequest } from "../types";
 import { DBResult } from "../../utils/result";
 import { LbPersonalBests } from "../../utils/pb";
-import { Language } from "@monkeytype/contracts/schemas/languages";
+import { Language } from "@monkeytype/schemas/languages";
 
 const CREATE_RESULT_DEFAULT_OPTIONS = {
   firstTestTimestamp: DateUtils.startOfDay(new UTCDate(Date.now())).valueOf(),
@@ -32,7 +28,7 @@ const CREATE_RESULT_DEFAULT_OPTIONS = {
 };
 
 export async function createTestData(
-  req: MonkeyRequest<undefined, GenerateDataRequest>
+  req: MonkeyRequest<undefined, GenerateDataRequest>,
 ): Promise<GenerateDataResponse> {
   const { username, createUser } = req.body;
   const user = await getOrCreateUser(username, "password", createUser);
@@ -49,7 +45,7 @@ export async function createTestData(
 async function getOrCreateUser(
   username: string,
   password: string,
-  createUser = false
+  createUser = false,
 ): Promise<UserDal.DBUser> {
   const existingUser = await UserDal.findByName(username);
 
@@ -74,7 +70,7 @@ async function getOrCreateUser(
 
 async function createTestResults(
   user: UserDal.DBUser,
-  configOptions: GenerateDataRequest
+  configOptions: GenerateDataRequest,
 ): Promise<void> {
   const config = {
     ...CREATE_RESULT_DEFAULT_OPTIONS,
@@ -94,14 +90,15 @@ async function createTestResults(
   for (const day of days) {
     Logger.success(
       `User ${user.name} insert ${day.amount} results on ${new Date(
-        day.timestamp
-      )}`
+        day.timestamp,
+      )}`,
     );
     const results = createArray(day.amount, () =>
-      createResult(user, day.timestamp)
+      createResult(user, day.timestamp),
     );
-    if (results.length > 0)
+    if (results.length > 0) {
       await ResultDal.getResultCollection().insertMany(results);
+    }
   }
 }
 
@@ -115,7 +112,7 @@ function random(min: number, max: number): number {
 
 function createResult(
   user: UserDal.DBUser,
-  timestamp: Date //evil, we modify this value
+  timestamp: Date, //evil, we modify this value
 ): DBResult {
   const mode: Mode = randomValue(["time", "words"]);
   const mode2: number =
@@ -141,7 +138,7 @@ function createResult(
     keyConsistency: 33.18,
     chartData: {
       wpm: createArray(testDuration, () => random(80, 120)),
-      raw: createArray(testDuration, () => random(80, 120)),
+      burst: createArray(testDuration, () => random(80, 120)),
       err: createArray(testDuration, () => (Math.random() < 0.1 ? 1 : 0)),
     },
     keySpacingStats: {
@@ -187,7 +184,7 @@ async function updateUser(uid: string): Promise<void> {
   const timeTyping = stats.reduce((a, c) => (a + c["timeTyping"]) as number, 0);
   const completedTests = stats.reduce(
     (a, c) => (a + c["completedTests"]) as number,
-    0
+    0,
   );
 
   //update PBs
@@ -211,26 +208,24 @@ async function updateUser(uid: string): Promise<void> {
         language: Language;
         mode: "time" | "custom" | "words" | "quote" | "zen";
         mode2: `${number}` | "custom" | "zen";
-      }
+      },
   );
 
   for (const mode of modes) {
-    const best = (
-      await ResultDal.getResultCollection()
-        .find({
-          uid,
-          language: mode.language,
-          mode: mode.mode,
-          mode2: mode.mode2,
-        })
-        .sort({ wpm: -1, timestamp: 1 })
-        .limit(1)
-        .toArray()
-    )[0] as DBResult;
+    const best = (await ResultDal.getResultCollection().findOne(
+      {
+        uid,
+        language: mode.language,
+        mode: mode.mode,
+        mode2: mode.mode2,
+      },
+      { sort: { wpm: -1, timestamp: 1 } },
+    )) as DBResult;
 
-    if (personalBests[mode.mode] === undefined) personalBests[mode.mode] = {};
-    if (personalBests[mode.mode][mode.mode2] === undefined)
+    personalBests[mode.mode] ??= {};
+    if (personalBests[mode.mode][mode.mode2] === undefined) {
       personalBests[mode.mode][mode.mode2] = [];
+    }
 
     const entry = {
       acc: best.acc,
@@ -248,10 +243,11 @@ async function updateUser(uid: string): Promise<void> {
     (personalBests[mode.mode][mode.mode2] as PersonalBest[]).push(entry);
 
     if (mode.mode === "time") {
-      if (lbPersonalBests[mode.mode][mode.mode2] === undefined)
+      if (lbPersonalBests[mode.mode][mode.mode2] === undefined) {
         lbPersonalBests[mode.mode][mode.mode2] = {};
+      }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // oxlint-disable-next-line no-unsafe-member-access
       lbPersonalBests[mode.mode][mode.mode2][mode.language] = entry;
     }
 
@@ -270,7 +266,7 @@ async function updateUser(uid: string): Promise<void> {
         personalBests: personalBests,
         lbPersonalBests: lbPersonalBests,
       },
-    }
+    },
   );
 }
 
@@ -398,7 +394,7 @@ async function updateTestActicity(uid: string): Promise<void> {
           },
         },
       ],
-      { allowDiskUse: true }
+      { allowDiskUse: true },
     )
     .toArray();
 }

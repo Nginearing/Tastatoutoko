@@ -6,11 +6,27 @@ import * as NotificationEvent from "../observables/notification-event";
 import * as BadgeController from "../controllers/badge-controller";
 import * as Notifications from "../elements/notifications";
 import * as ConnectionState from "../states/connection";
-import { escapeHTML } from "../utils/misc";
+import {
+  applyReducedMotion,
+  createErrorMessage,
+  escapeHTML,
+  promiseAnimate,
+} from "../utils/misc";
 import AnimatedModal from "../utils/animated-modal";
 import { updateXp as accountPageUpdateProfile } from "./profile";
-import { MonkeyMail } from "@monkeytype/contracts/schemas/users";
+import { MonkeyMail } from "@monkeytype/schemas/users";
 import * as XPBar from "../elements/xp-bar";
+import * as AuthEvent from "../observables/auth-event";
+import { getActivePage } from "../signals/core";
+import { animate } from "animejs";
+import { qs, qsr } from "../utils/dom";
+
+const alertsPopupEl = qsr("#alertsPopup");
+const accountAlertsListEl = alertsPopupEl.qsr(".accountAlerts .list");
+const psasListEl = alertsPopupEl.qsr(".psas .list");
+const notificationHistoryListEl = alertsPopupEl.qsr(
+  ".notificationHistory .list",
+);
 
 let accountAlerts: MonkeyMail[] = [];
 let maxMail = 0;
@@ -18,10 +34,17 @@ let mailToMarkRead: string[] = [];
 let mailToDelete: string[] = [];
 
 type State = {
-  notifications: { message: string; level: number; customTitle?: string }[];
+  notifications: {
+    id: string;
+    title: string;
+    message: string;
+    level: number;
+    details?: string | object;
+  }[];
   psas: { message: string; level: number }[];
 };
 
+let notificationId = 0;
 const state: State = {
   notifications: [],
   psas: [],
@@ -29,10 +52,11 @@ const state: State = {
 
 function hide(): void {
   setNotificationBubbleVisible(false);
+  DB.updateInboxUnreadSize(0);
   void modal.hide({
     afterAnimation: async () => {
-      $("#alertsPopup .notificationHistory .list").empty();
-      $("#alertsPopup .psas .list").empty();
+      notificationHistoryListEl?.empty();
+      psasListEl?.empty();
 
       const badgesClaimed: string[] = [];
       let totalXpClaimed = 0;
@@ -85,14 +109,19 @@ function hide(): void {
             duration: 5,
             customTitle: "Reward",
             customIcon: "gift",
-          }
+          },
         );
       }
 
       if (totalXpClaimed > 0) {
         const snapxp = DB.getSnapshot()?.xp ?? 0;
         void XPBar.update(snapxp, totalXpClaimed);
-        accountPageUpdateProfile(snapxp + totalXpClaimed);
+
+        const activePage = getActivePage();
+        if (activePage === "account" || activePage === "profile") {
+          accountPageUpdateProfile(activePage, snapxp + totalXpClaimed, true);
+        }
+
         DB.addXp(totalXpClaimed);
       }
     },
@@ -103,13 +132,13 @@ async function show(): Promise<void> {
   void modal.show({
     beforeAnimation: async () => {
       if (isAuthenticated()) {
-        $("#alertsPopup .accountAlerts").removeClass("hidden");
-        $("#alertsPopup .separator.accountSeparator").removeClass("hidden");
-        $("#alertsPopup .accountAlerts .list").html(`
+        alertsPopupEl.qs(".accountAlerts")?.show();
+        alertsPopupEl.qs(".separator.accountSeparator")?.show();
+        accountAlertsListEl.setHtml(`
           <div class="preloader"><i class="fas fa-fw fa-spin fa-circle-notch"></i></div>`);
       } else {
-        $("#alertsPopup .accountAlerts").addClass("hidden");
-        $("#alertsPopup .separator.accountSeparator").addClass("hidden");
+        alertsPopupEl.qs(".accountAlerts")?.hide();
+        alertsPopupEl.qs(".separator.accountSeparator")?.hide();
       }
 
       accountAlerts = [];
@@ -129,7 +158,7 @@ async function show(): Promise<void> {
 
 async function getAccountAlerts(): Promise<void> {
   if (!ConnectionState.get()) {
-    $("#alertsPopup .accountAlerts .list").html(`
+    accountAlertsListEl.setHtml(`
     <div class="nothing">
     You are offline
     </div>
@@ -140,14 +169,14 @@ async function getAccountAlerts(): Promise<void> {
   const inboxResponse = await Ape.users.getInbox();
 
   if (inboxResponse.status === 503) {
-    $("#alertsPopup .accountAlerts .list").html(`
+    accountAlertsListEl.setHtml(`
     <div class="nothing">
     Account inboxes are temporarily unavailable
     </div>
     `);
     return;
   } else if (inboxResponse.status !== 200) {
-    $("#alertsPopup .accountAlerts .list").html(`
+    accountAlertsListEl.setHtml(`
     <div class="nothing">
     Error getting inbox: ${inboxResponse.body.message} Please try again later
     </div>
@@ -158,10 +187,21 @@ async function getAccountAlerts(): Promise<void> {
 
   accountAlerts = inboxData.inbox;
 
+  // accountAlerts = [
+  //   {
+  //     id: "test-alert-1",
+  //     subject: "Welcome to Monkeytype!",
+  //     body: "Thank you for joining Monkeytype. We hope you enjoy your stay!",
+  //     timestamp: new Date().toISOString(),
+  //     read: false,
+  //     rewards: [{ type: "xp", item: 100 }],
+  //   },
+  // ];
+
   updateClaimDeleteAllButton();
 
   if (accountAlerts.length === 0) {
-    $("#alertsPopup .accountAlerts .list").html(`
+    accountAlertsListEl.setHtml(`
     <div class="nothing">
     Nothing to show
     </div>
@@ -173,7 +213,7 @@ async function getAccountAlerts(): Promise<void> {
 
   updateInboxSize();
 
-  $("#alertsPopup .accountAlerts .list").empty();
+  accountAlertsListEl.empty();
 
   for (const ie of accountAlerts) {
     if (!ie.read && ie.rewards.length === 0) {
@@ -189,12 +229,12 @@ async function getAccountAlerts(): Promise<void> {
       </div>`;
     }
 
-    $("#alertsPopup .accountAlerts .list").append(`
+    accountAlertsListEl.appendHtml(`
     
       <div class="item" data-id="${ie.id}">
         <div class="indicator ${ie.read ? "" : "main"}"></div>
         <div class="timestamp">${formatDistanceToNowStrict(
-          new Date(ie.timestamp)
+          new Date(ie.timestamp),
         )} ago</div>
         <div class="title">${ie.subject}</div>
         <div class="body">
@@ -227,11 +267,9 @@ export function addPSA(message: string, level: number): void {
 
 function fillPSAs(): void {
   if (state.psas.length === 0) {
-    $("#alertsPopup .psas .list").html(
-      `<div class="nothing">Nothing to show</div>`
-    );
+    psasListEl.setHtml(`<div class="nothing">Nothing to show</div>`);
   } else {
-    $("#alertsPopup .psas .list").empty();
+    psasListEl.empty();
 
     for (const p of state.psas) {
       const { message, level } = p;
@@ -243,7 +281,7 @@ function fillPSAs(): void {
       } else if (level === 0) {
         levelClass = "sub";
       }
-      $("#alertsPopup .psas .list").prepend(`
+      psasListEl.prependHtml(`
         <div class="item">
         <div class="indicator ${levelClass}"></div>
         <div class="body">
@@ -257,34 +295,34 @@ function fillPSAs(): void {
 
 function fillNotifications(): void {
   if (state.notifications.length === 0) {
-    $("#alertsPopup .notificationHistory .list").html(
-      `<div class="nothing">Nothing to show</div>`
+    notificationHistoryListEl.setHtml(
+      `<div class="nothing">Nothing to show</div>`,
     );
   } else {
-    $("#alertsPopup .notificationHistory .list").empty();
-
+    notificationHistoryListEl.empty();
     for (const n of state.notifications) {
-      const { message, level, customTitle } = n;
-      let title = "Notice";
+      const { message, level, title } = n;
+
       let levelClass = "sub";
       if (level === -1) {
         levelClass = "error";
-        title = "Error";
       } else if (level === 1) {
         levelClass = "main";
-        title = "Success";
       }
 
-      if (customTitle !== undefined) {
-        title = customTitle;
-      }
-
-      $("#alertsPopup .notificationHistory .list").prepend(`
-      <div class="item">
+      notificationHistoryListEl.prependHtml(`
+      <div class="item" data-id="${n.id}">
       <div class="indicator ${levelClass}"></div>
       <div class="title">${title}</div>
       <div class="body">
         ${escapeHTML(message)}
+      </div>
+      <div class="buttons">
+        ${
+          n.details !== undefined
+            ? `<button class="copyNotification textButton" aria-label="Copy details to clipboard" data-balloon-pos="left"><i class="fas fa-fw fa-clipboard"></i></button>`
+            : ``
+        }
       </div>
     </div>
     `);
@@ -294,23 +332,24 @@ function fillNotifications(): void {
 
 export function setNotificationBubbleVisible(tf: boolean): void {
   if (tf) {
-    $("header nav .showAlerts .notificationBubble").removeClass("hidden");
+    qs("header nav .showAlerts .notificationBubble")?.show();
   } else {
-    $("header nav .showAlerts .notificationBubble").addClass("hidden");
+    qs("header nav .showAlerts .notificationBubble")?.hide();
   }
 }
 
 function updateInboxSize(): void {
-  $("#alertsPopup .accountAlerts .title .right").text(
-    `${accountAlerts.length}/${maxMail}`
-  );
+  const remainingItems = accountAlerts.length - mailToDelete.length;
+  alertsPopupEl
+    .qs(".accountAlerts .title .right")
+    ?.setText(`${remainingItems}/${maxMail}`);
 }
 
 function deleteAlert(id: string): void {
   mailToDelete.push(id);
-  $(`#alertsPopup .accountAlerts .list .item[data-id="${id}"]`).remove();
-  if ($("#alertsPopup .accountAlerts .list .item").length === 0) {
-    $("#alertsPopup .accountAlerts .list").html(`
+  alertsPopupEl.qs(`.accountAlerts .list .item[data-id="${id}"]`)?.remove();
+  if (alertsPopupEl.qsa(".accountAlerts .list .item").length === 0) {
+    accountAlertsListEl.setHtml(`
     <div class="nothing">
     Nothing to show
     </div>
@@ -322,36 +361,35 @@ function deleteAlert(id: string): void {
 
 function markReadAlert(id: string): void {
   mailToMarkRead.push(id);
-  const item = $(`#alertsPopup .accountAlerts .list .item[data-id="${id}"]`);
+  const item = alertsPopupEl.qsr(`.accountAlerts .list .item[data-id="${id}"]`);
   updateClaimDeleteAllButton();
 
-  item.find(".indicator").removeClass("main");
-  item.find(".buttons").empty();
+  item.qs(".indicator")?.removeClass("main");
+  item.qs(".buttons")?.empty();
   item
-    .find(".buttons")
-    .append(
-      `<button class="deleteAlert textButton" aria-label="Delete" data-balloon-pos="left"><i class="fas fa-trash"></i></button>`
+    .qs(".buttons")
+    ?.appendHtml(
+      `<button class="deleteAlert textButton" aria-label="Delete" data-balloon-pos="left"><i class="fas fa-trash"></i></button>`,
     );
-  item.find(".rewards").animate(
-    {
-      opacity: 0,
-      height: 0,
-      marginTop: 0,
+
+  const itemToAnimate = item.qsr(".rewards");
+  animate(itemToAnimate.native, {
+    opacity: 0,
+    height: 0,
+    marginTop: 0,
+    duration: 250,
+    onComplete: () => {
+      itemToAnimate.remove();
     },
-    250,
-    "easeOutCubic",
-    () => {
-      item.find(".rewards").remove();
-    }
-  );
+  });
 }
 
 function updateClaimDeleteAllButton(): void {
-  const claimAllButton = $("#alertsPopup .accountAlerts .claimAll");
-  const deleteAllButton = $("#alertsPopup .accountAlerts .deleteAll");
+  const claimAllButton = alertsPopupEl.qs(".accountAlerts .claimAll");
+  const deleteAllButton = alertsPopupEl.qs(".accountAlerts .deleteAll");
 
-  claimAllButton.addClass("hidden");
-  deleteAllButton.addClass("hidden");
+  claimAllButton?.hide();
+  deleteAllButton?.hide();
   if (accountAlerts.length > 0) {
     let rewardsCount = 0;
     for (const ie of accountAlerts) {
@@ -361,28 +399,116 @@ function updateClaimDeleteAllButton(): void {
     }
 
     if (rewardsCount > 0) {
-      claimAllButton.removeClass("hidden");
+      claimAllButton?.show();
     } else {
-      deleteAllButton.removeClass("hidden");
+      deleteAllButton?.show();
     }
   }
   if (mailToDelete.length === accountAlerts.length) {
-    deleteAllButton.addClass("hidden");
+    deleteAllButton?.hide();
   }
 }
 
-$("header nav .showAlerts").on("click", () => {
+async function copyNotificationToClipboard(target: HTMLElement): Promise<void> {
+  const id = (target as HTMLElement | null)
+    ?.closest(".item")
+    ?.getAttribute("data-id")
+    ?.toString();
+
+  if (id === undefined) {
+    throw new Error("Notification ID is undefined");
+  }
+  const notification = state.notifications.find((it) => it.id === id);
+  if (notification === undefined) return;
+
+  const icon = target.querySelector("i") as HTMLElement;
+
+  try {
+    await navigator.clipboard.writeText(
+      JSON.stringify(
+        {
+          title: notification.title,
+          message: notification.message,
+          details: notification.details,
+        },
+        null,
+        4,
+      ),
+    );
+
+    const duration = applyReducedMotion(100);
+
+    await promiseAnimate(icon, {
+      scale: [1, 0.8],
+      opacity: [1, 0],
+      duration,
+    });
+    icon.classList.remove("fa-clipboard");
+    icon.classList.add("fa-check", "highlight");
+    await promiseAnimate(icon, {
+      scale: [0.8, 1],
+      opacity: [0, 1],
+      duration,
+    });
+
+    await promiseAnimate(icon, {
+      scale: [1, 0.8],
+      opacity: [1, 0],
+      delay: 3000,
+      duration,
+    });
+    icon.classList.remove("fa-check", "highlight");
+    icon.classList.add("fa-clipboard");
+
+    await promiseAnimate(icon, {
+      scale: [0.8, 1],
+      opacity: [0, 1],
+      duration,
+    });
+  } catch (e: unknown) {
+    const msg = createErrorMessage(e, "Could not copy to clipboard");
+    Notifications.add(msg, -1);
+  }
+}
+
+qs("header nav .showAlerts")?.on("click", () => {
   void show();
 });
 
-NotificationEvent.subscribe((message, level, customTitle) => {
+NotificationEvent.subscribe((message, level, options) => {
+  let title = "Notice";
+  if (level === -1) {
+    title = "Error";
+  } else if (level === 1) {
+    title = "Success";
+  }
+  if (options.customTitle !== undefined) {
+    title = options.customTitle;
+  }
+
   state.notifications.push({
+    id: (notificationId++).toString(),
+    title,
     message,
     level,
-    customTitle,
+    details: options.details,
   });
   if (state.notifications.length > 25) {
     state.notifications.shift();
+  }
+});
+
+AuthEvent.subscribe((event) => {
+  if (event.type === "snapshotUpdated" && event.data.isInitial) {
+    const snapshot = DB.getSnapshot();
+    setNotificationBubbleVisible((snapshot?.inboxUnreadSize ?? 0) > 0);
+  }
+  if (event.type === "authStateChanged" && !event.data.isUserSignedIn) {
+    setNotificationBubbleVisible(false);
+    accountAlerts = [];
+    mailToMarkRead = [];
+    mailToDelete = [];
+    accountAlertsListEl.empty();
   }
 });
 
@@ -391,24 +517,12 @@ const modal = new AnimatedModal({
   customAnimations: {
     show: {
       modal: {
-        from: {
-          marginRight: "-10rem",
-        },
-        to: {
-          marginRight: "0",
-        },
-        easing: "easeOutCirc",
+        marginRight: ["-10rem", "0"],
       },
     },
     hide: {
       modal: {
-        from: {
-          marginRight: "0",
-        },
-        to: {
-          marginRight: "-10rem",
-        },
-        easing: "easeInCirc",
+        marginRight: ["0", "-10rem"],
       },
     },
   },
@@ -419,7 +533,7 @@ const modal = new AnimatedModal({
     hide();
   },
   setup: async (): Promise<void> => {
-    $("#alertsPopup .accountAlerts").on("click", ".claimAll", () => {
+    alertsPopupEl.qs(".accountAlerts")?.onChild("click", ".claimAll", () => {
       for (const ie of accountAlerts) {
         if (!ie.read && !mailToMarkRead.includes(ie.id)) {
           markReadAlert(ie.id);
@@ -427,7 +541,7 @@ const modal = new AnimatedModal({
       }
     });
 
-    $("#alertsPopup .accountAlerts").on("click", ".deleteAll", () => {
+    alertsPopupEl.qs(".accountAlerts")?.onChild("click", ".deleteAll", () => {
       for (const ie of accountAlerts) {
         if (!mailToDelete.includes(ie.id)) {
           deleteAlert(ie.id);
@@ -435,30 +549,44 @@ const modal = new AnimatedModal({
       }
     });
 
-    $("#alertsPopup .mobileClose").on("click", () => {
+    alertsPopupEl.qs(".mobileClose")?.on("click", () => {
       hide();
     });
 
-    $("#alertsPopup .accountAlerts .list").on(
-      "click",
-      ".item .buttons .deleteAlert",
-      (e) => {
-        const id = $(e.currentTarget)
-          .closest(".item")
-          .attr("data-id") as string;
-        deleteAlert(id);
-      }
-    );
+    alertsPopupEl
+      .qs(".accountAlerts .list")
+      ?.onChild("click", ".item .buttons .deleteAlert", (e) => {
+        const id = (e.target as HTMLElement | null)
+          ?.closest(".item")
+          ?.getAttribute("data-id")
+          ?.toString();
 
-    $("#alertsPopup .accountAlerts .list").on(
-      "click",
-      ".item .buttons .markReadAlert",
-      (e) => {
-        const id = $(e.currentTarget)
-          .closest(".item")
-          .attr("data-id") as string;
+        if (id === undefined) {
+          throw new Error("Alert ID is undefined");
+        }
+
+        deleteAlert(id);
+      });
+
+    alertsPopupEl
+      .qs(".accountAlerts .list")
+      ?.onChild("click", ".item .buttons .markReadAlert", (e) => {
+        const id = (e.target as HTMLElement | null)
+          ?.closest(".item")
+          ?.getAttribute("data-id")
+          ?.toString();
+
+        if (id === undefined) {
+          throw new Error("Alert ID is undefined");
+        }
+
         markReadAlert(id);
-      }
-    );
+      });
+
+    alertsPopupEl
+      .qs(".notificationHistory .list")
+      ?.onChild("click", ".item .buttons .copyNotification", (e) => {
+        void copyNotificationToClipboard(e.target as HTMLElement);
+      });
   },
 });

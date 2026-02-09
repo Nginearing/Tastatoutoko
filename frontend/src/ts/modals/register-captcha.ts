@@ -3,7 +3,11 @@ import AnimatedModal from "../utils/animated-modal";
 import { promiseWithResolvers } from "../utils/misc";
 import * as Notifications from "../elements/notifications";
 
-let { promise, resolve } = promiseWithResolvers<string | undefined>();
+const {
+  promise,
+  resolve,
+  reset: resetPromise,
+} = promiseWithResolvers<string | undefined>();
 
 export { promise };
 
@@ -11,7 +15,7 @@ export async function show(): Promise<void> {
   if (!CaptchaController.isCaptchaAvailable()) {
     Notifications.add(
       "Could not show register popup: Captcha is not available. This could happen due to a blocked or failed network request. Please refresh the page or contact support if this issue persists.",
-      -1
+      -1,
     );
     resolve(undefined);
     return;
@@ -20,16 +24,16 @@ export async function show(): Promise<void> {
   await modal.show({
     mode: "dialog",
     beforeAnimation: async (modal) => {
-      ({ promise, resolve } = promiseWithResolvers<string | undefined>());
+      resetPromise();
       CaptchaController.reset("register");
 
       CaptchaController.render(
-        modal.querySelector(".g-recaptcha") as HTMLElement,
+        modal.qsr(".g-recaptcha").native,
         "register",
         (token) => {
           resolve(token);
           hide();
-        }
+        },
       );
     },
   });

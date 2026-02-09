@@ -1,14 +1,17 @@
 import Ape from "../ape";
-import * as AccountController from "../controllers/account-controller";
+import * as AccountController from "../auth";
 import * as DB from "../db";
-import * as UpdateConfig from "../config";
+import { resetConfig, setConfig } from "../config";
 import * as Notifications from "../elements/notifications";
 import * as Settings from "../pages/settings";
 import * as ThemePicker from "../elements/settings/theme-picker";
 import * as CustomText from "../test/custom-text";
-import * as AccountButton from "../elements/account-button";
 import { FirebaseError } from "firebase/app";
-import { Auth, isAuthenticated, getAuthenticatedUser } from "../firebase";
+import {
+  isAuthenticated,
+  getAuthenticatedUser,
+  isAuthAvailable,
+} from "../firebase";
 import {
   EmailAuthProvider,
   User,
@@ -20,12 +23,10 @@ import {
 import {
   createErrorMessage,
   isDevEnvironment,
-  isPasswordStrong,
   reloadAfter,
 } from "../utils/misc";
 import * as CustomTextState from "../states/custom-text-name";
 import * as ThemeController from "../controllers/theme-controller";
-import { CustomThemeColors } from "@monkeytype/contracts/schemas/configs";
 import * as AccountSettings from "../pages/account-settings";
 import {
   ExecReturn,
@@ -33,61 +34,22 @@ import {
   SimpleModal,
   TextInput,
 } from "../utils/simple-modal";
-import { ShowOptions } from "../utils/animated-modal";
+
 import { GenerateDataRequest } from "@monkeytype/contracts/dev";
-import { UserEmailSchema, UserNameSchema } from "@monkeytype/contracts/users";
+import {
+  PasswordSchema,
+  UserEmailSchema,
+  UserNameSchema,
+} from "@monkeytype/schemas/users";
 import { goToPage } from "../pages/leaderboards";
+import FileStorage from "../utils/file-storage";
+import { z } from "zod";
+import { remoteValidation } from "../utils/remote-validation";
+import { list, PopupKey, showPopup } from "./simple-modals-base";
+import { getTheme } from "../signals/theme";
 
-type PopupKey =
-  | "updateEmail"
-  | "updateName"
-  | "updatePassword"
-  | "removeGoogleAuth"
-  | "removeGithubAuth"
-  | "removePasswordAuth"
-  | "addPasswordAuth"
-  | "deleteAccount"
-  | "resetAccount"
-  | "optOutOfLeaderboards"
-  | "applyCustomFont"
-  | "resetPersonalBests"
-  | "resetSettings"
-  | "revokeAllTokens"
-  | "unlinkDiscord"
-  | "editApeKey"
-  | "deleteCustomText"
-  | "deleteCustomTextLong"
-  | "resetProgressCustomTextLong"
-  | "updateCustomTheme"
-  | "deleteCustomTheme"
-  | "devGenerateData"
-  | "lbGoToPage";
-
-const list: Record<PopupKey, SimpleModal | undefined> = {
-  updateEmail: undefined,
-  updateName: undefined,
-  updatePassword: undefined,
-  removeGoogleAuth: undefined,
-  removeGithubAuth: undefined,
-  removePasswordAuth: undefined,
-  addPasswordAuth: undefined,
-  deleteAccount: undefined,
-  resetAccount: undefined,
-  optOutOfLeaderboards: undefined,
-  applyCustomFont: undefined,
-  resetPersonalBests: undefined,
-  resetSettings: undefined,
-  revokeAllTokens: undefined,
-  unlinkDiscord: undefined,
-  editApeKey: undefined,
-  deleteCustomText: undefined,
-  deleteCustomTextLong: undefined,
-  resetProgressCustomTextLong: undefined,
-  updateCustomTheme: undefined,
-  deleteCustomTheme: undefined,
-  devGenerateData: undefined,
-  lbGoToPage: undefined,
-};
+export { list, showPopup };
+export type { PopupKey };
 
 type AuthMethod = "password" | "github.com" | "google.com";
 
@@ -108,7 +70,7 @@ type ReauthenticateOptions = {
 };
 
 function getPreferredAuthenticationMethod(
-  exclude?: AuthMethod
+  exclude?: AuthMethod,
 ): AuthMethod | undefined {
   const authMethods = ["password", "github.com", "google.com"] as AuthMethod[];
   const filteredMethods = authMethods.filter((it) => it !== exclude);
@@ -132,29 +94,30 @@ function isUsingGoogleAuthentication(): boolean {
 
 function isUsingAuthentication(authProvider: AuthMethod): boolean {
   return (
-    Auth?.currentUser?.providerData.some(
-      (p) => p.providerId === authProvider
-    ) || false
+    getAuthenticatedUser()?.providerData.some(
+      (p) => p.providerId === authProvider,
+    ) ?? false
   );
 }
 
 async function reauthenticate(
-  options: ReauthenticateOptions
+  options: ReauthenticateOptions,
 ): Promise<ReauthSuccess | ReauthFailed> {
-  if (Auth === undefined) {
+  if (!isAuthAvailable()) {
     return {
       status: -1,
       message: "Authentication is not initialized",
     };
   }
 
-  if (!isAuthenticated()) {
+  const user = getAuthenticatedUser();
+  if (user === null) {
     return {
       status: -1,
       message: "User is not signed in",
     };
   }
-  const user = getAuthenticatedUser();
+
   const authMethod = getPreferredAuthenticationMethod(options.excludeMethod);
 
   try {
@@ -175,7 +138,7 @@ async function reauthenticate(
       }
       const credential = EmailAuthProvider.credential(
         user.email as string,
-        options.password
+        options.password,
       );
       await reauthenticateWithCredential(user, credential);
     } else {
@@ -241,6 +204,7 @@ list.updateEmail = new SimpleModal({
         isValid: async (currentValue, thisPopup) =>
           currentValue === thisPopup.inputs?.[1]?.currentValue() ||
           "Emails don't match",
+        debounceDelay: 0,
       },
     },
   ],
@@ -250,7 +214,7 @@ list.updateEmail = new SimpleModal({
     _thisPopup,
     password,
     email,
-    emailConfirm
+    emailConfirm,
   ): Promise<ExecReturn> => {
     if (email !== emailConfirm) {
       return {
@@ -277,7 +241,8 @@ list.updateEmail = new SimpleModal({
     if (response.status !== 200) {
       return {
         status: -1,
-        message: "Failed to update email: " + response.body.message,
+        message: "Failed to update email",
+        notificationOptions: { response },
       };
     }
 
@@ -433,7 +398,7 @@ list.removePasswordAuth = new SimpleModal({
     } catch (e) {
       const message = createErrorMessage(
         e,
-        "Failed to remove password authentication"
+        "Failed to remove password authentication",
       );
       return {
         status: -1,
@@ -469,15 +434,11 @@ list.updateName = new SimpleModal({
       initVal: "",
       validation: {
         schema: UserNameSchema,
-        isValid: async (newName: string) => {
-          const checkNameResponse = (
-            await Ape.users.getNameAvailability({
-              params: { name: newName },
-            })
-          ).status;
-
-          return checkNameResponse === 200 ? true : "Name not available";
-        },
+        isValid: remoteValidation(
+          async (name) => Ape.users.getNameAvailability({ params: { name } }),
+          { check: (data) => data.available || "Name not available" },
+        ),
+        debounceDelay: 1000,
       },
     },
   ],
@@ -492,13 +453,14 @@ list.updateName = new SimpleModal({
       };
     }
 
-    const updateNameResponse = await Ape.users.updateName({
+    const response = await Ape.users.updateName({
       body: { name: newName },
     });
-    if (updateNameResponse.status !== 200) {
+    if (response.status !== 200) {
       return {
         status: -1,
-        message: "Failed to update name: " + updateNameResponse.body.message,
+        message: "Failed to update name",
+        notificationOptions: { response },
       };
     }
 
@@ -509,7 +471,6 @@ list.updateName = new SimpleModal({
       if (snapshot.needsToChangeName) {
         reloadAfter(2);
       }
-      AccountButton.update(snapshot);
     }
 
     return {
@@ -545,6 +506,9 @@ list.updatePassword = new SimpleModal({
       placeholder: "new password",
       type: "password",
       initVal: "",
+      validation: {
+        schema: isDevEnvironment() ? z.string().min(6) : PasswordSchema,
+      },
     },
     {
       placeholder: "confirm new password",
@@ -558,7 +522,7 @@ list.updatePassword = new SimpleModal({
     _thisPopup,
     previousPass,
     newPassword,
-    newPassConfirm
+    newPassConfirm,
   ): Promise<ExecReturn> => {
     if (newPassword !== newPassConfirm) {
       return {
@@ -571,14 +535,6 @@ list.updatePassword = new SimpleModal({
       return {
         status: 0,
         message: "New password must be different from previous password",
-      };
-    }
-
-    if (!isDevEnvironment() && !isPasswordStrong(newPassword)) {
-      return {
-        status: 0,
-        message:
-          "New password must contain at least one capital letter, number, a special character and must be between 8 and 64 characters long",
       };
     }
 
@@ -597,7 +553,8 @@ list.updatePassword = new SimpleModal({
     if (response.status !== 200) {
       return {
         status: -1,
-        message: "Failed to update password: " + response.body.message,
+        message: "Failed to update password",
+        notificationOptions: { response },
       };
     }
 
@@ -650,7 +607,7 @@ list.addPasswordAuth = new SimpleModal({
     email,
     emailConfirm,
     password,
-    passConfirm
+    passConfirm,
   ): Promise<ExecReturn> => {
     if (email !== emailConfirm) {
       return {
@@ -680,7 +637,7 @@ list.addPasswordAuth = new SimpleModal({
     } catch (e) {
       const message = createErrorMessage(
         e,
-        "Failed to add password authentication"
+        "Failed to add password authentication",
       );
       return {
         status: -1,
@@ -698,8 +655,8 @@ list.addPasswordAuth = new SimpleModal({
       return {
         status: -1,
         message:
-          "Password authentication added but updating the database email failed. This shouldn't happen, please contact support. Error: " +
-          response.body.message,
+          "Password authentication added but updating the database email failed. This shouldn't happen, please contact support. Error",
+        notificationOptions: { response },
       };
     }
 
@@ -734,12 +691,13 @@ list.deleteAccount = new SimpleModal({
     }
 
     Notifications.add("Deleting all data...", 0);
-    const usersResponse = await Ape.users.delete();
+    const response = await Ape.users.delete();
 
-    if (usersResponse.status !== 200) {
+    if (response.status !== 200) {
       return {
         status: -1,
-        message: "Failed to delete user data: " + usersResponse.body.message,
+        message: "Failed to delete user data",
+        notificationOptions: { response },
       };
     }
 
@@ -782,14 +740,16 @@ list.resetAccount = new SimpleModal({
     }
 
     Notifications.add("Resetting settings...", 0);
-    await UpdateConfig.reset();
+    await resetConfig();
+    await FileStorage.deleteFile("LocalBackgroundFile");
 
     Notifications.add("Resetting account...", 0);
     const response = await Ape.users.reset();
     if (response.status !== 200) {
       return {
         status: -1,
-        message: "Failed to reset account: " + response.body.message,
+        message: "Failed to reset account",
+        notificationOptions: { response },
       };
     }
 
@@ -835,7 +795,8 @@ list.optOutOfLeaderboards = new SimpleModal({
     if (response.status !== 200) {
       return {
         status: -1,
-        message: "Failed to opt out: " + response.body.message,
+        message: "Failed to opt out",
+        notificationOptions: { response },
       };
     }
 
@@ -896,7 +857,8 @@ list.resetPersonalBests = new SimpleModal({
     if (response.status !== 200) {
       return {
         status: -1,
-        message: "Failed to reset personal bests: " + response.body.message,
+        message: "Failed to reset personal bests",
+        notificationOptions: { response },
       };
     }
 
@@ -937,7 +899,8 @@ list.resetSettings = new SimpleModal({
   buttonText: "reset",
   onlineOnly: true,
   execFn: async (): Promise<ExecReturn> => {
-    await UpdateConfig.reset();
+    await resetConfig();
+    await FileStorage.deleteFile("LocalBackgroundFile");
     return {
       status: 1,
       message: "Settings reset",
@@ -971,7 +934,8 @@ list.revokeAllTokens = new SimpleModal({
     if (response.status !== 200) {
       return {
         status: -1,
-        message: "Failed to revoke tokens: " + response.body.message,
+        message: "Failed to revoke tokens",
+        notificationOptions: { response },
       };
     }
 
@@ -1012,13 +976,13 @@ list.unlinkDiscord = new SimpleModal({
     if (response.status !== 200) {
       return {
         status: -1,
-        message: "Failed to unlink Discord: " + response.body.message,
+        message: "Failed to unlink Discord",
+        notificationOptions: { response },
       };
     }
 
     snap.discordAvatar = undefined;
     snap.discordId = undefined;
-    AccountButton.updateAvatar(undefined, undefined);
     DB.setSnapshot(snap);
     AccountSettings.updateUI();
 
@@ -1076,7 +1040,7 @@ list.resetProgressCustomTextLong = new SimpleModal({
     CustomText.setCustomTextLongProgress(_thisPopup.parameters[0] as string, 0);
     const text = CustomText.getCustomText(
       _thisPopup.parameters[0] as string,
-      true
+      true,
     );
     CustomText.setText(text);
     return {
@@ -1117,7 +1081,7 @@ list.updateCustomTheme = new SimpleModal({
     }
 
     const customTheme = snapshot.customThemes?.find(
-      (t) => t._id === _thisPopup.parameters[0]
+      (t) => t._id === _thisPopup.parameters[0],
     );
     if (customTheme === undefined) {
       return {
@@ -1126,22 +1090,14 @@ list.updateCustomTheme = new SimpleModal({
       };
     }
 
-    let newColors: string[] = [];
-    if (updateColors === "true") {
-      for (const color of ThemeController.colorVars) {
-        newColors.push(
-          $(
-            `.pageSettings .customTheme .customThemeEdit #${color}[type='color']`
-          ).attr("value") as string
-        );
-      }
-    } else {
-      newColors = customTheme.colors;
-    }
+    let newColors =
+      updateColors === "true"
+        ? ThemeController.convertThemeToCustomColors(getTheme())
+        : customTheme.colors;
 
     const newTheme = {
       name: name.replaceAll(" ", "_"),
-      colors: newColors as CustomThemeColors,
+      colors: newColors,
     };
     const validation = await DB.editCustomTheme(customTheme._id, newTheme);
     if (!validation) {
@@ -1150,8 +1106,8 @@ list.updateCustomTheme = new SimpleModal({
         message: "Failed to update custom theme",
       };
     }
-    UpdateConfig.setCustomThemeColors(newColors as CustomThemeColors);
-    void ThemePicker.refreshCustomButtons();
+    setConfig("customThemeColors", newColors);
+    void ThemePicker.fillCustomButtons();
 
     return {
       status: 1,
@@ -1163,7 +1119,7 @@ list.updateCustomTheme = new SimpleModal({
     if (!snapshot) return;
 
     const customTheme = snapshot.customThemes?.find(
-      (t) => t._id === _thisPopup.parameters[0]
+      (t) => t._id === _thisPopup.parameters[0],
     );
     if (!customTheme) return;
     (_thisPopup.inputs[0] as TextInput).initVal = customTheme.name;
@@ -1178,7 +1134,7 @@ list.deleteCustomTheme = new SimpleModal({
   onlineOnly: true,
   execFn: async (_thisPopup): Promise<ExecReturn> => {
     await DB.deleteCustomTheme(_thisPopup.parameters[0] as string);
-    void ThemePicker.refreshCustomButtons();
+    void ThemePicker.fillCustomButtons();
 
     return {
       status: 1,
@@ -1199,9 +1155,9 @@ list.devGenerateData = new SimpleModal({
       oninput: (event): void => {
         const target = event.target as HTMLInputElement;
         const span = document.querySelector(
-          "#devGenerateData_1 + span"
+          "#devGenerateData_1 + span",
         ) as HTMLInputElement;
-        span.innerHTML = `if checked, user will be created with ${target.value}@example.com and password: password`;
+        span.innerText = `if checked, user will be created with ${target.value}@example.com and password: password`;
         return;
       },
       validation: {
@@ -1251,20 +1207,24 @@ list.devGenerateData = new SimpleModal({
     firstTestTimestamp,
     lastTestTimestamp,
     minTestsPerDay,
-    maxTestsPerDay
+    maxTestsPerDay,
   ): Promise<ExecReturn> => {
     const request: GenerateDataRequest = {
       username,
       createUser: createUser === "true",
     };
-    if (firstTestTimestamp !== undefined && firstTestTimestamp.length > 0)
+    if (firstTestTimestamp !== undefined && firstTestTimestamp.length > 0) {
       request.firstTestTimestamp = Date.parse(firstTestTimestamp);
-    if (lastTestTimestamp !== undefined && lastTestTimestamp.length > 0)
+    }
+    if (lastTestTimestamp !== undefined && lastTestTimestamp.length > 0) {
       request.lastTestTimestamp = Date.parse(lastTestTimestamp);
-    if (minTestsPerDay !== undefined && minTestsPerDay.length > 0)
+    }
+    if (minTestsPerDay !== undefined && minTestsPerDay.length > 0) {
       request.minTestsPerDay = Number.parseInt(minTestsPerDay);
-    if (maxTestsPerDay !== undefined && maxTestsPerDay.length > 0)
+    }
+    if (maxTestsPerDay !== undefined && maxTestsPerDay.length > 0) {
       request.maxTestsPerDay = Number.parseInt(maxTestsPerDay);
+    }
 
     const result = await Ape.dev.generateData({ body: request });
 
@@ -1306,107 +1266,3 @@ list.lbGoToPage = new SimpleModal({
     };
   },
 });
-
-export function showPopup(
-  key: PopupKey,
-  showParams = [] as string[],
-  showOptions: ShowOptions = {}
-): void {
-  const popup = list[key];
-  if (popup === undefined) {
-    Notifications.add("Failed to show popup - popup is not defined", -1);
-    return;
-  }
-  popup.show(showParams, showOptions);
-}
-
-//todo: move these event handlers to their respective files (either global event files or popup files)
-$(".pageAccountSettings").on("click", "#unlinkDiscordButton", () => {
-  showPopup("unlinkDiscord");
-});
-
-$(".pageAccountSettings").on("click", "#removeGoogleAuth", () => {
-  showPopup("removeGoogleAuth");
-});
-
-$(".pageAccountSettings").on("click", "#removeGithubAuth", () => {
-  showPopup("removeGithubAuth");
-});
-
-$(".pageAccountSettings").on("click", "#removePasswordAuth", () => {
-  showPopup("removePasswordAuth");
-});
-
-$("#resetSettingsButton").on("click", () => {
-  showPopup("resetSettings");
-});
-
-$(".pageAccountSettings").on("click", "#revokeAllTokens", () => {
-  showPopup("revokeAllTokens");
-});
-
-$(".pageAccountSettings").on("click", "#resetPersonalBestsButton", () => {
-  showPopup("resetPersonalBests");
-});
-
-$(".pageAccountSettings").on("click", "#updateAccountName", () => {
-  showPopup("updateName");
-});
-
-$("#bannerCenter").on("click", ".banner .text .openNameChange", () => {
-  showPopup("updateName");
-});
-
-$(".pageAccountSettings").on("click", "#addPasswordAuth", () => {
-  showPopup("addPasswordAuth");
-});
-
-$(".pageAccountSettings").on("click", "#emailPasswordAuth", () => {
-  showPopup("updateEmail");
-});
-
-$(".pageAccountSettings").on("click", "#passPasswordAuth", () => {
-  showPopup("updatePassword");
-});
-
-$(".pageAccountSettings").on("click", "#deleteAccount", () => {
-  showPopup("deleteAccount");
-});
-
-$(".pageAccountSettings").on("click", "#resetAccount", () => {
-  showPopup("resetAccount");
-});
-
-$(".pageAccountSettings").on("click", "#optOutOfLeaderboardsButton", () => {
-  showPopup("optOutOfLeaderboards");
-});
-
-$(".pageSettings").on(
-  "click",
-  ".section.themes .customTheme .delButton",
-  (e) => {
-    const $parentElement = $(e.currentTarget).parent(".customTheme.button");
-    const customThemeId = $parentElement.attr("customThemeId") as string;
-    showPopup("deleteCustomTheme", [customThemeId]);
-  }
-);
-
-$(".pageSettings").on(
-  "click",
-  ".section.themes .customTheme .editButton",
-  (e) => {
-    const $parentElement = $(e.currentTarget).parent(".customTheme.button");
-    const customThemeId = $parentElement.attr("customThemeId") as string;
-    showPopup("updateCustomTheme", [customThemeId], {
-      focusFirstInput: "focusAndSelect",
-    });
-  }
-);
-
-$(".pageSettings").on(
-  "click",
-  ".section[data-config-name='fontFamily'] button[data-config-value='custom']",
-  () => {
-    showPopup("applyCustomFont");
-  }
-);

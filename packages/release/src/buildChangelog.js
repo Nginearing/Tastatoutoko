@@ -40,40 +40,45 @@ async function getLog() {
   function execPromise(command) {
     return new Promise((resolve, reject) => {
       exec(command, (err, stdout, _stderr) => {
-        if (err) reject(err);
-        resolve(stdout);
+        if (err) {
+          reject(err);
+        } else {
+          resolve(stdout);
+        }
       });
     });
   }
 
   return execPromise(`git describe --tags --abbrev=0 HEAD^`).then((lastTag) =>
     execPromise(
-      `git log --oneline ${lastTag.trim()}..HEAD --pretty="format:${lineDelimiter}%H${logDelimiter}%h${logDelimiter}%s${logDelimiter}%b"`
-    )
+      `git log --oneline ${lastTag.trim()}..HEAD --pretty="format:${lineDelimiter}%H${logDelimiter}%h${logDelimiter}%s${logDelimiter}%b"`,
+    ),
   );
 }
 
 function itemIsAddingQuotes(item) {
   const scopeIsQuote =
-    item.scope?.includes("quote") ||
-    item.scope?.includes("quotes") ||
-    item.message?.includes("quote");
+    item.scope?.includes("quote") === true ||
+    item.scope?.includes("quotes") === true ||
+    item.message?.includes("quote") === true;
 
   const messageAdds =
-    item.message.includes("add") ||
-    item.message.includes("added") ||
-    item.message.includes("adding") ||
-    item.message.includes("adds");
+    item.message.includes("add") === true ||
+    item.message.includes("added") === true ||
+    item.message.includes("adding") === true ||
+    item.message.includes("adds") === true;
 
   return scopeIsQuote && messageAdds;
 }
 
 function itemIsAddressingQuoteReports(item) {
   const scopeIsQuote =
-    item.scope?.includes("quote") || item.scope?.includes("quotes");
+    item.scope?.includes("quote") === true ||
+    item.scope?.includes("quotes") === true;
 
   const messageReport =
-    item.message.includes("report") || item.message.includes("reports");
+    item.message.includes("report") === true ||
+    item.message.includes("reports") === true;
 
   return scopeIsQuote && messageReport;
 }
@@ -121,7 +126,7 @@ function buildSection(type, allItems) {
   let ret = `### ${titles[type]}\n\n`;
 
   const items = allItems.filter(
-    (item) => item.type === type && !item.body.includes("!nuf")
+    (item) => item.type === type && !item.body.includes("!nuf"),
   );
 
   if (items.length === 0) {
@@ -136,13 +141,13 @@ function buildFooter(logs) {
     "\n### Nerd stuff\n\nThese changes will not be visible to users, but are included for completeness and to credit contributors.\n\n";
 
   const featLogs = logs.filter(
-    (item) => item.type === "feat" && item.body.includes("!nuf")
+    (item) => item.type === "feat" && item.body.includes("!nuf"),
   );
   const imprLogs = logs.filter(
-    (item) => item.type === "impr" && item.body.includes("!nuf")
+    (item) => item.type === "impr" && item.body.includes("!nuf"),
   );
   const fixLogs = logs.filter(
-    (item) => item.type === "fix" && item.body.includes("!nuf")
+    (item) => item.type === "fix" && item.body.includes("!nuf"),
   );
   const styleLogs = logs.filter((item) => item.type === "style");
   const docLogs = logs.filter((item) => item.type === "docs");
@@ -170,7 +175,7 @@ function buildFooter(logs) {
   //remove dupes based on hash
   const uniqueOtherLogs = allOtherLogs.filter(
     (item, index, self) =>
-      index === self.findIndex((t) => t.hashes[0].full === item.hashes[0].full)
+      index === self.findIndex((t) => t.hashes[0].full === item.hashes[0].full),
   );
 
   // console.log(uniqueOtherLogs);
@@ -252,7 +257,7 @@ function convertStringToLog(logString) {
     //split message using regex based on fix(language): spelling mistakes in Nepali wordlist and quotes (sapradhan) (#4528)
     //scope is optional, username is optional, pr number is optional
     const [_, type, scope, message, username, pr] = title.split(
-      /^(\w+)(?:\(([^)]+)\))?:\s+(.+?)(?:\s*\((@[^)]+)\))?(?:\s+\((#[^)]+)\))?$/
+      /^(\w+)(?:\(([^)]+)\))?:\s+(.+?)(?:\s*\((@[^)]+)\))?(?:\s+\((#[^)]+)\))?$/,
     );
 
     const usernames = username ? username.split(", ") : [];
@@ -269,9 +274,9 @@ function convertStringToLog(logString) {
         type,
         scope,
         message,
-        usernames: usernames || [],
-        prs: prs || [],
-        body: body || "",
+        usernames: usernames ?? [],
+        prs: prs ?? [],
+        body: body ?? "",
       });
     } else {
       // console.log({ hash, shortHash, title, body });
@@ -326,48 +331,46 @@ async function main() {
 
   let log = convertStringToLog(logString);
 
-  const contributorCount = log
-    .map((l) => {
-      const filtered = l.usernames.filter((u) => {
-        const lowerCased = u.toLowerCase();
-        return (
-          lowerCased !== "monkeytype-bot" &&
-          lowerCased !== "dependabot" &&
-          lowerCased !== "miodec"
-        );
-      });
-      return filtered;
-    })
-    .flat().length;
+  const contributorCount = log.flatMap((l) => {
+    const filtered = l.usernames.filter((u) => {
+      const lowerCased = u.toLowerCase();
+      return (
+        lowerCased !== "monkeytype-bot" &&
+        lowerCased !== "dependabot" &&
+        lowerCased !== "miodec"
+      );
+    });
+    return filtered;
+  }).length;
 
   let quoteAddCommits = log.filter((item) => itemIsAddingQuotes(item));
   log = log.filter((item) => !itemIsAddingQuotes(item));
 
   let quoteReportCommits = log.filter((item) =>
-    itemIsAddressingQuoteReports(item)
+    itemIsAddressingQuoteReports(item),
   );
   log = log.filter((item) => !itemIsAddressingQuoteReports(item));
 
   if (quoteAddCommits.length > 0) {
     log.push({
-      hashes: quoteAddCommits.map((item) => item.hashes).flat(),
+      hashes: quoteAddCommits.flatMap((item) => item.hashes),
       type: "impr",
       scope: "quotes",
       message: "add quotes in various languages",
-      usernames: quoteAddCommits.map((item) => item.usernames).flat(),
-      prs: quoteAddCommits.map((item) => item.prs).flat(),
+      usernames: quoteAddCommits.flatMap((item) => item.usernames),
+      prs: quoteAddCommits.flatMap((item) => item.prs),
       body: "",
     });
   }
 
   if (quoteReportCommits.length > 0) {
     log.push({
-      hashes: quoteReportCommits.map((item) => item.hashes).flat(),
+      hashes: quoteReportCommits.flatMap((item) => item.hashes),
       type: "fix",
       scope: "quotes",
       message: "update or remove quotes reported by users",
-      usernames: quoteReportCommits.map((item) => item.usernames).flat(),
-      prs: quoteReportCommits.map((item) => item.prs).flat(),
+      usernames: quoteReportCommits.flatMap((item) => item.usernames),
+      prs: quoteReportCommits.flatMap((item) => item.prs),
       body: "",
     });
   }

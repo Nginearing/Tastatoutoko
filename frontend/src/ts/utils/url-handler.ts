@@ -1,5 +1,5 @@
 import * as Misc from "./misc";
-import Config, * as UpdateConfig from "../config";
+import Config, { setConfig } from "../config";
 import * as Notifications from "../elements/notifications";
 import { decompressFromURI } from "lz-ts";
 import * as TestState from "../test/test-state";
@@ -7,7 +7,8 @@ import * as ManualRestart from "../test/manual-restart-tracker";
 import * as CustomText from "../test/custom-text";
 import Ape from "../ape";
 import * as DB from "../db";
-import * as Loader from "../elements/loader";
+
+import { showLoaderBar, hideLoaderBar } from "../signals/loader-bar";
 import * as AccountButton from "../elements/account-button";
 import { restart as restartTest } from "../test/test-logic";
 import * as ChallengeController from "../controllers/challenge-controller";
@@ -15,7 +16,7 @@ import {
   DifficultySchema,
   Mode2Schema,
   ModeSchema,
-} from "@monkeytype/contracts/schemas/shared";
+} from "@monkeytype/schemas/shared";
 import {
   CustomBackgroundFilter,
   CustomBackgroundFilterSchema,
@@ -25,11 +26,13 @@ import {
   CustomThemeColorsSchema,
   FunboxSchema,
   FunboxName,
-} from "@monkeytype/contracts/schemas/configs";
+} from "@monkeytype/schemas/configs";
 import { z } from "zod";
 import { parseWithSchema as parseJsonWithSchema } from "@monkeytype/util/json";
 import { tryCatchSync } from "@monkeytype/util/trycatch";
-import { Language } from "@monkeytype/contracts/schemas/languages";
+import { Language } from "@monkeytype/schemas/languages";
+import * as AuthEvent from "../observables/auth-event";
+import { CustomTextSettingsSchema } from "@monkeytype/schemas/results";
 
 export async function linkDiscord(hashOverride: string): Promise<void> {
   if (!hashOverride) return;
@@ -40,14 +43,14 @@ export async function linkDiscord(hashOverride: string): Promise<void> {
     const tokenType = fragment.get("token_type") as string;
     const state = fragment.get("state") as string;
 
-    Loader.show();
+    showLoaderBar();
     const response = await Ape.users.linkDiscord({
       body: { tokenType, accessToken, state },
     });
-    Loader.hide();
+    hideLoaderBar();
 
     if (response.status !== 200) {
-      Notifications.add("Failed to link Discord: " + response.body.message, -1);
+      Notifications.add("Failed to link Discord", -1, { response });
       return;
     }
 
@@ -64,12 +67,13 @@ export async function linkDiscord(hashOverride: string): Promise<void> {
     const { discordId, discordAvatar } = response.body.data;
     if (discordId !== undefined) {
       snapshot.discordId = discordId;
-    } else {
+    }
+    if (discordAvatar !== undefined) {
       snapshot.discordAvatar = discordAvatar;
     }
 
     DB.setSnapshot(snapshot);
-    AccountButton.updateAvatar(discordId, discordAvatar);
+    AccountButton.updateAvatar(snapshot);
   }
 }
 
@@ -85,7 +89,7 @@ export function loadCustomThemeFromUrl(getOverride?: string): void {
   if (getValue === null) return;
 
   const { data: decoded, error } = tryCatchSync(() =>
-    parseJsonWithSchema(atob(getValue), customThemeUrlDataSchema)
+    parseJsonWithSchema(atob(getValue), customThemeUrlDataSchema),
   );
   if (error) {
     console.log("Custom theme URL decoding failed", error);
@@ -115,28 +119,28 @@ export function loadCustomThemeFromUrl(getOverride?: string): void {
   const oldCustomTheme = Config.customTheme;
   const oldCustomThemeColors = Config.customThemeColors;
   try {
-    UpdateConfig.setCustomThemeColors(colorArray);
+    setConfig("customThemeColors", colorArray);
     Notifications.add("Custom theme applied", 1);
 
     if (image !== undefined && size !== undefined && filter !== undefined) {
-      UpdateConfig.setCustomBackground(image);
-      UpdateConfig.setCustomBackgroundSize(size);
-      UpdateConfig.setCustomBackgroundFilter(filter);
+      setConfig("customBackground", image);
+      setConfig("customBackgroundSize", size);
+      setConfig("customBackgroundFilter", filter);
     }
 
-    if (!Config.customTheme) UpdateConfig.setCustomTheme(true);
+    if (!Config.customTheme) setConfig("customTheme", true);
   } catch (e) {
     Notifications.add("Something went wrong. Reverting to previous state.", 0);
     console.error(e);
-    UpdateConfig.setCustomTheme(oldCustomTheme);
-    UpdateConfig.setCustomThemeColors(oldCustomThemeColors);
+    setConfig("customTheme", oldCustomTheme);
+    setConfig("customThemeColors", oldCustomThemeColors);
   }
 }
 
 const TestSettingsSchema = z.tuple([
   ModeSchema.nullable(),
   Mode2Schema.nullable(),
-  CustomText.CustomTextSettingsSchema.partial({
+  CustomTextSettingsSchema.partial({
     pipeDelimiter: true,
     limit: true,
     mode: true,
@@ -161,14 +165,17 @@ export function loadTestSettingsFromUrl(getOverride?: string): void {
   const getValue = Misc.findGetParameter("testSettings", getOverride);
   if (getValue === null) return;
 
+  // if the encoding structure or method ever changes, make sure to support the old data format
+  // otherwise eiko will be sad
+
   const { data: de, error } = tryCatchSync(() =>
-    parseJsonWithSchema(decompressFromURI(getValue) ?? "", TestSettingsSchema)
+    parseJsonWithSchema(decompressFromURI(getValue) ?? "", TestSettingsSchema),
   );
   if (error) {
     console.error("Failed to parse test settings:", error);
     Notifications.add(
       "Failed to load test settings from URL: " + error.message,
-      0
+      0,
     );
     return;
   }
@@ -176,18 +183,24 @@ export function loadTestSettingsFromUrl(getOverride?: string): void {
   const applied: Record<string, string> = {};
 
   if (de[0] !== null) {
-    UpdateConfig.setMode(de[0], true);
+    setConfig("mode", de[0], {
+      nosave: true,
+    });
     applied["mode"] = de[0];
   }
 
   const mode = de[0] ?? Config.mode;
   if (de[1] !== null) {
     if (mode === "time") {
-      UpdateConfig.setTimeConfig(parseInt(de[1], 10), true);
+      setConfig("time", parseInt(de[1], 10), {
+        nosave: true,
+      });
     } else if (mode === "words") {
-      UpdateConfig.setWordCount(parseInt(de[1], 10), true);
+      setConfig("words", parseInt(de[1], 10), {
+        nosave: true,
+      });
     } else if (mode === "quote") {
-      UpdateConfig.setQuoteLength(-2, false);
+      setConfig("quoteLength", [-2]);
       TestState.setSelectedQuoteId(parseInt(de[1], 10));
       ManualRestart.set();
     }
@@ -197,6 +210,9 @@ export function loadTestSettingsFromUrl(getOverride?: string): void {
   if (de[2] !== null) {
     const customTextSettings = de[2];
     CustomText.setText(customTextSettings.text);
+
+    //make sure to set mode before the limit as mode also sets the limit
+    CustomText.setMode(customTextSettings.mode ?? "repeat");
 
     if (customTextSettings.limit !== undefined) {
       CustomText.setLimitMode(customTextSettings.limit.mode);
@@ -224,28 +240,34 @@ export function loadTestSettingsFromUrl(getOverride?: string): void {
       CustomText.setPipeDelimiter(true);
     }
 
-    CustomText.setMode(customTextSettings.mode ?? "repeat");
-
     applied["custom text settings"] = "";
   }
 
   if (de[3] !== null) {
-    UpdateConfig.setPunctuation(de[3], true);
+    setConfig("punctuation", de[3], {
+      nosave: true,
+    });
     applied["punctuation"] = de[3] ? "on" : "off";
   }
 
   if (de[4] !== null) {
-    UpdateConfig.setNumbers(de[4], true);
+    setConfig("numbers", de[4], {
+      nosave: true,
+    });
     applied["numbers"] = de[4] ? "on" : "off";
   }
 
   if (de[5] !== null) {
-    UpdateConfig.setLanguage(de[5] as Language, true);
+    setConfig("language", de[5] as Language, {
+      nosave: true,
+    });
     applied["language"] = de[5];
   }
 
   if (de[6] !== null) {
-    UpdateConfig.setDifficulty(de[6], true);
+    setConfig("difficulty", de[6], {
+      nosave: true,
+    });
     applied["difficulty"] = de[6];
   }
 
@@ -257,7 +279,9 @@ export function loadTestSettingsFromUrl(getOverride?: string): void {
     } else {
       val = de[7];
     }
-    UpdateConfig.setFunbox(val, true);
+    setConfig("funbox", val, {
+      nosave: true,
+    });
     applied["funbox"] = val.join(", ");
   }
 
@@ -303,3 +327,14 @@ export function loadChallengeFromUrl(getOverride?: string): void {
       console.error(e);
     });
 }
+
+AuthEvent.subscribe((event) => {
+  if (event.type === "authStateChanged") {
+    const search = window.location.search;
+    const hash = window.location.hash;
+    loadCustomThemeFromUrl(search);
+    loadTestSettingsFromUrl(search);
+    loadChallengeFromUrl(search);
+    void linkDiscord(hash);
+  }
+});

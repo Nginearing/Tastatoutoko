@@ -5,175 +5,113 @@ import {
 } from "../controllers/user-flag-controller";
 import { isAuthenticated } from "../firebase";
 import * as XpBar from "./xp-bar";
-import { Snapshot } from "../constants/default-snapshot";
+import { getAvatarElement } from "../utils/discord-avatar";
+import * as AuthEvent from "../observables/auth-event";
+import { getSnapshot } from "../db";
+import { qsr } from "../utils/dom";
 
-let usingAvatar = false;
+const nav = qsr("header nav");
+const accountButtonAndMenuEl = nav.qsr(".accountButtonAndMenu");
+const loginButtonEl = nav.qsr(".textButton.view-login");
 
 export function hide(): void {
-  $("nav .accountButtonAndMenu").addClass("hidden");
-  $("nav .textButton.view-login").addClass("hidden");
+  accountButtonAndMenuEl.addClass("hidden");
+  loginButtonEl.addClass("hidden");
 }
 
 export function loading(state: boolean): void {
-  if (state) {
-    $("header nav .account").css("opacity", 1).css("pointer-events", "none");
-
-    if (usingAvatar) {
-      $("header nav .view-account .loading")
-        .css("opacity", 1)
-        .removeClass("hidden");
-      $("header nav .view-account .avatar")
-        .stop(true, true)
-        .css({ opacity: 1 })
-        .animate(
-          {
-            opacity: 0,
-          },
-          100,
-          () => {
-            $("header nav .view-account .avatar").addClass("hidden");
-          }
-        );
-    } else {
-      $("header nav .view-account .loading")
-        .stop(true, true)
-        .removeClass("hidden")
-        .css({ opacity: 0 })
-        .animate(
-          {
-            opacity: 1,
-          },
-          100
-        );
-      $("header nav .view-account .user")
-        .stop(true, true)
-        .css({ opacity: 1 })
-        .animate(
-          {
-            opacity: 0,
-          },
-          100,
-          () => {
-            $("header nav .view-account .user").addClass("hidden");
-          }
-        );
-    }
-  } else {
-    $("header nav .account").css("opacity", 1).css("pointer-events", "auto");
-
-    if (usingAvatar) {
-      $("header nav .view-account .loading")
-        .css("opacity", 1)
-        .addClass("hidden");
-      $("header nav .view-account .avatar")
-        .stop(true, true)
-        .removeClass("hidden")
-        .css({ opacity: 0 })
-        .animate(
-          {
-            opacity: 1,
-          },
-          100
-        );
-    } else {
-      $("header nav .view-account .loading")
-        .stop(true, true)
-        .css({ opacity: 1 })
-        .animate(
-          {
-            opacity: 0,
-          },
-          100,
-          () => {
-            $("header nav .view-account .loading").addClass("hidden");
-          }
-        );
-      $("header nav .view-account .user")
-        .stop(true, true)
-        .removeClass("hidden")
-        .css({ opacity: 0 })
-        .animate(
-          {
-            opacity: 1,
-          },
-          100
-        );
-    }
-  }
+  accountButtonAndMenuEl
+    .qs(".spinner")
+    ?.setStyle({ opacity: state ? "1" : "0" });
+  accountButtonAndMenuEl
+    .qs(".avatar")
+    ?.setStyle({ opacity: state ? "0" : "1" });
 }
 
 export function updateName(name: string): void {
-  $("header nav .view-account > .text").text(name);
+  accountButtonAndMenuEl.qs(".view-account > .text")?.setText(name);
 }
 
 function updateFlags(flags: SupportsFlags): void {
-  $("nav .textButton.view-account > .text").append(
-    getHtmlByUserFlags(flags, { iconsOnly: true })
-  );
+  accountButtonAndMenuEl
+    .qs(".view-account > .text")
+    ?.appendHtml(getHtmlByUserFlags(flags, { iconsOnly: true }));
 }
 
-export function updateAvatar(
-  discordId: string | undefined,
-  discordAvatar: string | undefined
-): void {
-  if ((discordAvatar ?? "") && (discordId ?? "")) {
-    void Misc.getDiscordAvatarUrl(discordId, discordAvatar).then(
-      (discordAvatarUrl) => {
-        if (discordAvatarUrl !== null) {
-          $("header nav .view-account .avatar").css(
-            "background-image",
-            `url(${discordAvatarUrl})`
-          );
-          usingAvatar = true;
-
-          $("header nav .view-account .user").addClass("hidden");
-          $("header nav .view-account .avatar").removeClass("hidden");
-        }
-      }
-    );
-  } else {
-    $("header nav .view-account .avatar").addClass("hidden");
-    $("header nav .view-account .user").removeClass("hidden");
-    $("header nav .view-account .avatar").css("background-image", "");
-    usingAvatar = false;
-  }
+export function updateAvatar(avatar?: {
+  discordId?: string;
+  discordAvatar?: string;
+}): void {
+  const element = getAvatarElement(avatar ?? {}, {
+    userIcon: "fas fa-fw fa-user",
+  });
+  accountButtonAndMenuEl.qs(".avatar")?.replaceWith(element);
 }
 
-export function update(snapshot: Snapshot | undefined): void {
+export function update(): void {
   if (isAuthenticated()) {
-    // this function is called after the snapshot is loaded (awaited), so it should be fine
-    const { xp, discordId, discordAvatar, name } = snapshot as Snapshot;
+    const snapshot = getSnapshot();
 
+    if (snapshot === undefined) return;
+
+    const { xp, name } = snapshot;
+
+    loading(false);
     updateName(name);
     updateFlags(snapshot ?? {});
     XpBar.setXp(xp);
-    updateAvatar(discordId ?? "", discordAvatar ?? "");
+    updateAvatar(snapshot);
 
-    $("nav .accountButtonAndMenu .menu .items .goToProfile").attr(
-      "href",
-      `/profile/${name}`
-    );
-    void Misc.swapElements(
-      $("nav .textButton.view-login"),
-      $("nav .accountButtonAndMenu"),
-      250
-    );
+    accountButtonAndMenuEl
+      .qs(".menu .items .goToProfile")
+      ?.setAttribute("href", `/profile/${name}`);
+    void Misc.swapElements(loginButtonEl, accountButtonAndMenuEl, 250);
   } else {
     void Misc.swapElements(
-      $("nav .accountButtonAndMenu"),
-      $("nav .textButton.view-login"),
+      accountButtonAndMenuEl,
+      loginButtonEl,
       250,
       async () => {
         updateName("");
         updateFlags({});
         XpBar.setXp(0);
-        updateAvatar(undefined, undefined);
-      }
+        updateAvatar();
+      },
     );
   }
+
+  updateFriendRequestsIndicator();
+}
+
+export function updateFriendRequestsIndicator(): void {
+  const friends = getSnapshot()?.connections;
+
+  const bubbleElements = accountButtonAndMenuEl.qsa(
+    ".view-account > .notificationBubble, .goToFriends > .notificationBubble",
+  );
+  if (friends !== undefined) {
+    const pendingFriendRequests = Object.values(friends).filter(
+      (it) => it === "incoming",
+    ).length;
+    if (pendingFriendRequests > 0) {
+      bubbleElements.show();
+      return;
+    }
+  }
+
+  bubbleElements.hide();
 }
 
 const coarse = window.matchMedia("(pointer:coarse)")?.matches;
 if (coarse) {
-  $("nav .accountButtonAndMenu .textButton.view-account").attr("href", "");
+  accountButtonAndMenuEl.qs(".view-account")?.setAttribute("href", "");
 }
+
+AuthEvent.subscribe((event) => {
+  if (
+    (event.type === "authStateChanged" && !event.data.isUserSignedIn) ||
+    event.type === "snapshotUpdated"
+  ) {
+    update();
+  }
+});

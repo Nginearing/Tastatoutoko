@@ -6,20 +6,23 @@ import * as Notifications from "../elements/notifications";
 import { checkIfGetParameterExists } from "../utils/misc";
 import * as UserReportModal from "../modals/user-report";
 import * as Skeleton from "../utils/skeleton";
-import { UserProfile } from "@monkeytype/contracts/schemas/users";
-import { PersonalBests } from "@monkeytype/contracts/schemas/shared";
+import { UserProfile } from "@monkeytype/schemas/users";
+import { PersonalBests } from "@monkeytype/schemas/shared";
+import * as TestActivity from "../elements/test-activity";
+import { TestActivityCalendar } from "../elements/test-activity-calendar";
+import { getFirstDayOfTheWeek } from "../utils/date-and-time";
+import { addFriend } from "./friends";
+import { onDOMReady, qs, qsr } from "../utils/dom";
+
+const firstDayOfTheWeek = getFirstDayOfTheWeek();
 
 function reset(): void {
-  $(".page.pageProfile .preloader").removeClass("hidden");
-  $(".page.pageProfile .profile").html(`
+  qs(".page.pageProfile .error")?.hide();
+  qs(".page.pageProfile .preloader")?.show();
+  qs(".page.pageProfile .profile")?.setHtml(`
       <div class="details none">
         <div class="avatarAndName">
-          <div class="avatars">
-            <div class="placeholderAvatar">
-              <i class="fas fa-user-circle"></i>
-            </div>
-            <div class="avatar"></div>
-          </div>
+          <div class="avatar"></div>
           <div>
              <div class="user">
               <div class="name">-</div>
@@ -73,11 +76,18 @@ function reset(): void {
         </div>
         <div class="buttonGroup">
           <button
-            class="userReportButton"
+            class="userReportButton hidden"
             data-balloon-pos="left"
             aria-label="Report user"
           >
             <i class="fas fa-flag"></i>
+          </button>
+          <button
+            class="addFriendButton hidden"
+            data-balloon-pos="left"
+            aria-label="Send friend request"
+          >
+            <i class="fas fa-user-plus"></i>
           </button>
         </div>
       </div>
@@ -153,7 +163,15 @@ function reset(): void {
             <div class="acc">-</div>
           </div>
         </div>
-      </div><div class="lbOptOutReminder hidden"></div>`);
+      </div><div class="lbOptOutReminder hidden"></div>
+      `);
+
+  const testActivityEl = document.querySelector(
+    ".page.pageProfile .testActivity",
+  );
+  if (testActivityEl !== null) {
+    TestActivity.clear(testActivityEl as HTMLElement);
+  }
 }
 
 type UpdateOptions = {
@@ -164,12 +182,12 @@ type UpdateOptions = {
 async function update(options: UpdateOptions): Promise<void> {
   const getParamExists = checkIfGetParameterExists("isUid");
   if (options.data) {
-    $(".page.pageProfile .preloader").addClass("hidden");
+    qs(".page.pageProfile .preloader")?.hide();
     await Profile.update("profile", options.data);
     PbTables.update(
       // this cast is fine because pb tables can handle the partial data inside user profiles
       options.data.personalBests as unknown as PersonalBests,
-      true
+      true,
     );
   } else if (options.uidOrName !== undefined && options.uidOrName !== "") {
     const response = await Ape.users.getProfile({
@@ -177,29 +195,40 @@ async function update(options: UpdateOptions): Promise<void> {
       query: { isUid: getParamExists },
     });
 
-    $(".page.pageProfile .preloader").addClass("hidden");
+    qs(".page.pageProfile .preloader")?.hide();
 
     if (response.status === 404) {
       const message = getParamExists
         ? "User not found"
         : `User ${options.uidOrName} not found`;
-      $(".page.pageProfile .preloader").addClass("hidden");
-      $(".page.pageProfile .error").removeClass("hidden");
-      $(".page.pageProfile .error .message").text(message);
+      qs(".page.pageProfile .preloader")?.hide();
+      qs(".page.pageProfile .error")?.show();
+      qs(".page.pageProfile .error .message")?.setText(message);
     } else if (response.status === 200) {
-      window.history.replaceState(
-        null,
-        "",
-        `/profile/${response.body.data.name}`
-      );
-      await Profile.update("profile", response.body.data);
+      const profile = response.body.data;
+      window.history.replaceState(null, "", `/profile/${profile.name}`);
+      await Profile.update("profile", profile);
       // this cast is fine because pb tables can handle the partial data inside user profiles
-      PbTables.update(
-        response.body.data.personalBests as unknown as PersonalBests,
-        true
-      );
+      PbTables.update(profile.personalBests as unknown as PersonalBests, true);
+
+      const testActivity = document.querySelector(
+        ".page.pageProfile .testActivity",
+      ) as HTMLElement;
+
+      if (profile.testActivity !== undefined) {
+        const calendar = new TestActivityCalendar(
+          profile.testActivity.testsByDays,
+          new Date(profile.testActivity.lastDay),
+          firstDayOfTheWeek,
+        );
+        TestActivity.init(testActivity, calendar);
+        const title = testActivity.querySelector(".top .title") as HTMLElement;
+        title.innerHTML = title?.innerHTML + " in last 12 months";
+      } else {
+        TestActivity.clear(testActivity);
+      }
     } else {
-      // $(".page.pageProfile .failedToLoad").removeClass("hidden");
+      // qs(".page.pageProfile .failedToLoad")?.show();
       Notifications.add("Failed to load profile: " + response.body.message, -1);
       return;
     }
@@ -208,18 +237,37 @@ async function update(options: UpdateOptions): Promise<void> {
   }
 }
 
-$(".page.pageProfile").on("click", ".profile .userReportButton", () => {
-  const uid = $(".page.pageProfile .profile").attr("uid") ?? "";
-  const name = $(".page.pageProfile .profile").attr("name") ?? "";
+qs(".page.pageProfile")?.onChild("click", ".profile .userReportButton", () => {
+  const uid = qs(".page.pageProfile .profile")?.getAttribute("uid") ?? "";
+  const name = qs(".page.pageProfile .profile")?.getAttribute("name") ?? "";
   const lbOptOut =
-    ($(".page.pageProfile .profile").attr("lbOptOut") ?? "false") === "true";
+    (qs(".page.pageProfile .profile")?.getAttribute("lbOptOut") ?? "false") ===
+    "true";
 
   void UserReportModal.show({ uid, name, lbOptOut });
 });
 
+qs(".page.pageProfile")?.onChild(
+  "click",
+  ".profile .addFriendButton",
+  async () => {
+    const friendName =
+      qs(".page.pageProfile .profile")?.getAttribute("name") ?? "";
+
+    const result = await addFriend(friendName);
+
+    if (result === true) {
+      Notifications.add(`Request sent to ${friendName}`);
+      qs(".profile .details .addFriendButton")?.disable();
+    } else {
+      Notifications.add(result, -1);
+    }
+  },
+);
+
 export const page = new Page<undefined | UserProfile>({
   id: "profile",
-  element: $(".page.pageProfile"),
+  element: qsr(".page.pageProfile"),
   path: "/profile",
   afterHide: async (): Promise<void> => {
     Skeleton.remove("pageProfile");
@@ -229,20 +277,22 @@ export const page = new Page<undefined | UserProfile>({
     Skeleton.append("pageProfile", "main");
     const uidOrName = options?.params?.["uidOrName"] ?? "";
     if (uidOrName) {
-      $(".page.pageProfile .preloader").removeClass("hidden");
-      $(".page.pageProfile .search").addClass("hidden");
-      $(".page.pageProfile .content").removeClass("hidden");
+      qs(".page.pageProfile .preloader")?.show();
+      qs(".page.pageProfile .search")?.hide();
+      qs(".page.pageProfile .content")?.show();
       reset();
       void update({
         uidOrName,
         data: options?.data,
       });
     } else {
-      $(".page.pageProfile .preloader").addClass("hidden");
-      $(".page.pageProfile .search").removeClass("hidden");
-      $(".page.pageProfile .content").addClass("hidden");
+      qs(".page.pageProfile .preloader")?.hide();
+      qs(".page.pageProfile .search")?.show();
+      qs(".page.pageProfile .content")?.hide();
     }
   },
 });
 
-Skeleton.save("pageProfile");
+onDOMReady(() => {
+  Skeleton.save("pageProfile");
+});

@@ -1,24 +1,12 @@
-@media only screen and (max-width: calc(1024px + 5rem)) {
-  #mediaQueryDebug {
-    background: #9ccc65;
-    &::before {
-      content: "green";
-    }
-  }
+@use "./media.scss" as *;
+
+@include media-query(green) {
   .content-grid {
     --content-max-width: 768px;
   }
   #testConfig {
     font-size: 0.7rem;
     --horizontalPadding: 0.6em;
-  }
-  #bannerCenter {
-    font-size: 0.85rem;
-    .banner .container {
-      .closeButton {
-        padding: 0.4em;
-      }
-    }
   }
   header {
     #logo {
@@ -60,13 +48,6 @@
       font-size: 7rem;
     }
   }
-  .pageAbout {
-    .section {
-      .contactButtons {
-        grid-template-columns: 1fr 1fr;
-      }
-    }
-  }
   .pageSettings {
     .section {
       grid-template-columns: 1fr 1fr;
@@ -74,6 +55,12 @@
       &[data-config-name="customBackgroundFilter"] {
         .groups {
           grid-template-columns: 1fr;
+        }
+      }
+
+      &.themes .tabContainer .tabContent.customTheme {
+        .customThemeInputs .customThemeInput {
+          grid-template-columns: 10em 1fr;
         }
       }
     }
@@ -209,53 +196,11 @@
       grid-template-areas: "title title" "t15 t60";
     }
   }
-  footer {
-    .leftright {
-      .left {
-        display: grid;
-        grid-template-columns: repeat(4, auto);
-      }
-      .right {
-        display: grid;
-        grid-template-columns: 1fr;
-      }
-    }
-  }
-  #leaderboardsWrapper #leaderboards {
-    .tables {
-      grid-template-columns: 1fr;
-      height: 100%;
-      .titleAndTable .title {
-        font-size: 1rem;
-      }
-      .rightTableWrapper,
-      .leftTableWrapper {
-        height: calc(50vh - 9rem);
-      }
-    }
-    .leaderboardsTop {
-      .buttons .timeRange {
-        font-size: 0.75rem;
-      }
-      // grid-template-columns: 1fr 1fr;
-      // grid-template-areas: "title title" "subtitle yesterday" "buttons buttons";
-      .mainTitle {
-        font-size: 1.5rem;
-      }
-
-      // .buttons .timeRange {
-      //   font-size: 0.75rem;
-      //   grid-template-columns: 1fr 1fr 1fr;
-      //   .languageSelect {
-      //     grid-column: span 1;
-      //   }
-      // }
-    }
-  }
   #customTextModal {
     .modal {
       grid-template-areas:
         "topButtons topButtons"
+        "topButtons2 topButtons2"
         "textArea textArea"
         "checkboxes checkboxes"
         "ok ok";
@@ -265,15 +210,9 @@
       }
     }
   }
-  #supportModal {
-    .modal {
-      .buttons {
-        grid-template-columns: 1fr 1fr;
-      }
-    }
-  }
-  #testActivity {
-    --box-size: 0.7em;
+  .testActivity {
+    --gap-size: 0.1em;
+    --font-size: 0.8em;
     .wrapper {
       grid-template-areas:
         "top top"
@@ -305,6 +244,15 @@
             justify-content: center;
           }
         }
+      }
+    }
+  }
+  .pageFriends {
+    .content .friends table {
+      td:nth-child(4),
+      td:nth-child(7),
+      td:nth-child(8) {
+        display: none;
       }
     }
   }

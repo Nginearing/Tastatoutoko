@@ -2,14 +2,16 @@ import * as CaptchaController from "../controllers/captcha-controller";
 import AnimatedModal from "../utils/animated-modal";
 import Ape from "../ape/index";
 import * as Notifications from "../elements/notifications";
-import * as Loader from "../elements/loader";
-import { z } from "zod";
+
+import { showLoaderBar, hideLoaderBar } from "../signals/loader-bar";
+import { UserEmailSchema } from "@monkeytype/schemas/users";
+import { ElementWithUtils } from "../utils/dom";
 
 export function show(): void {
   if (!CaptchaController.isCaptchaAvailable()) {
     Notifications.add(
       "Could not show forgot password popup: Captcha is not available. This could happen due to a blocked or failed network request. Please refresh the page or contact support if this issue persists.",
-      -1
+      -1,
     );
     return;
   }
@@ -20,11 +22,11 @@ export function show(): void {
     beforeAnimation: async (modal) => {
       CaptchaController.reset("forgotPasswordModal");
       CaptchaController.render(
-        modal.querySelector(".g-recaptcha") as HTMLElement,
+        modal.qsr(".g-recaptcha").native,
         "forgotPasswordModal",
         async () => {
           await submit();
-        }
+        },
       );
     },
   });
@@ -37,36 +39,33 @@ async function submit(): Promise<void> {
     return;
   }
 
-  const email = (
-    modal.getModal().querySelector("input") as HTMLInputElement
-  ).value.trim();
+  const email =
+    modal.getModal().qs<HTMLInputElement>("input")?.getValue()?.trim() ?? "";
 
-  if (!email) {
+  if (email === "") {
     Notifications.add("Please enter your email address");
     CaptchaController.reset("forgotPasswordModal");
     return;
   }
 
-  const emailSchema = z.string().email();
-
-  const validation = emailSchema.safeParse(email);
+  const validation = UserEmailSchema.safeParse(email);
   if (!validation.success) {
     Notifications.add("Please enter a valid email address");
     CaptchaController.reset("forgotPasswordModal");
     return;
   }
 
-  Loader.show();
+  showLoaderBar();
   void Ape.users
     .forgotPasswordEmail({
       body: { email, captcha: captchaResponse },
     })
     .then((result) => {
-      Loader.hide();
+      hideLoaderBar();
       if (result.status !== 200) {
         Notifications.add(
           "Failed to send password reset email: " + result.body.message,
-          -1
+          -1,
         );
         return;
       }
@@ -81,8 +80,8 @@ function hide(): void {
   void modal.hide();
 }
 
-async function setup(modalEl: HTMLElement): Promise<void> {
-  modalEl.querySelector("button")?.addEventListener("click", async () => {
+async function setup(modalEl: ElementWithUtils): Promise<void> {
+  modalEl.qs("button")?.on("click", async () => {
     await submit();
   });
 }

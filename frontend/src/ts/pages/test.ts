@@ -7,14 +7,15 @@ import { updateFooterAndVerticalAds } from "../controllers/ad-controller";
 import * as ModesNotice from "../elements/modes-notice";
 import * as Keymap from "../elements/keymap";
 import * as TestConfig from "../test/test-config";
-import * as ScrollToTop from "../elements/scroll-to-top";
+import { blurInputElement } from "../input/input-element";
+import { qsr } from "../utils/dom";
 
 export const page = new Page({
   id: "test",
-  element: $(".page.pageTest"),
+  element: qsr(".page.pageTest"),
   path: "/",
   beforeHide: async (): Promise<void> => {
-    $("#wordsInput").trigger("focusout");
+    blurInputElement();
   },
   afterHide: async (): Promise<void> => {
     ManualRestart.set();
@@ -33,8 +34,6 @@ export const page = new Page({
       noAnim: true,
     });
     void TestConfig.instantUpdate();
-    void Funbox.activate();
     void Keymap.refresh();
-    ScrollToTop.hide();
   },
 });

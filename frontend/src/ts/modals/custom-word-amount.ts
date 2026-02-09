@@ -1,4 +1,4 @@
-import Config, * as UpdateConfig from "../config";
+import Config, { setConfig } from "../config";
 import * as ManualRestart from "../test/manual-restart-tracker";
 import * as TestLogic from "../test/test-logic";
 import * as Notifications from "../elements/notifications";
@@ -9,9 +9,7 @@ export function show(showOptions?: ShowOptions): void {
     ...showOptions,
     focusFirstInput: "focusAndSelect",
     beforeAnimation: async (modalEl) => {
-      (
-        modalEl.querySelector("input") as HTMLInputElement
-      ).value = `${Config.words}`;
+      modalEl.qs<HTMLInputElement>("input")?.setValue(`${Config.words}`);
     },
   });
 }
@@ -24,12 +22,12 @@ function hide(clearChain = false): void {
 
 function apply(): void {
   const val = parseInt(
-    modal.getModal().querySelector("input")?.value as string,
-    10
+    modal.getModal().qs<HTMLInputElement>("input")?.getValue() ?? "",
+    10,
   );
 
   if (val !== null && !isNaN(val) && val >= 0 && isFinite(val)) {
-    if (UpdateConfig.setWordCount(val)) {
+    if (setConfig("words", val)) {
       ManualRestart.set();
       TestLogic.restart();
       if (val > 2000) {
@@ -40,7 +38,7 @@ function apply(): void {
           0,
           {
             duration: 7,
-          }
+          },
         );
       }
     }
@@ -54,7 +52,7 @@ function apply(): void {
 const modal = new AnimatedModal({
   dialogId: "customWordAmountModal",
   setup: async (modalEl): Promise<void> => {
-    modalEl.addEventListener("submit", (e) => {
+    modalEl.on("submit", (e) => {
       e.preventDefault();
       apply();
     });

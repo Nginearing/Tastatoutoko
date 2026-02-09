@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { isDevEnvironment } from "./misc";
-import { MonkeyServerErrorType } from "@monkeytype/contracts/schemas/api";
+import { MonkeyServerErrorType } from "@monkeytype/contracts/util/api";
 import { FirebaseError } from "firebase-admin";
 
 type FirebaseErrorParent = {
@@ -8,18 +8,18 @@ type FirebaseErrorParent = {
   errorInfo: FirebaseError;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line no-explicit-any
 export function isFirebaseError(err: any): err is FirebaseErrorParent {
   return (
     typeof err === "object" &&
     "code" in err &&
     "errorInfo" in err &&
     "codePrefix" in err &&
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    // oxlint-disable-next-line no-unsafe-member-access
     typeof err.errorInfo === "object" &&
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    // oxlint-disable-next-line no-unsafe-member-access
     "code" in err.errorInfo &&
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    // oxlint-disable-next-line no-unsafe-member-access
     "message" in err.errorInfo
   );
 }
@@ -55,7 +55,7 @@ class MonkeyError extends Error implements MonkeyServerErrorType {
   uid?: string;
 
   constructor(status: number, message?: string, stack?: string, uid?: string) {
-    super();
+    super(message);
     this.status = status ?? 500;
     this.errorId = uuidv4();
     this.stack = stack;
@@ -63,7 +63,7 @@ class MonkeyError extends Error implements MonkeyServerErrorType {
 
     if (isDevEnvironment()) {
       this.message =
-        stack ?? ""
+        (stack ?? "")
           ? String(message) + "\nStack: " + String(stack)
           : String(message);
     } else {

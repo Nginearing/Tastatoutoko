@@ -50,7 +50,7 @@
       id="startTestButton"
       class="textButton view-start"
       href="/"
-      onclick="this.blur();"
+      onclick="this.blur()"
       router-link
       title="start test"
     >
@@ -58,19 +58,10 @@
         <i class="fas fa-fw fa-keyboard"></i>
       </div>
     </a>
-    <!-- <button
-      class="textButton leaderboards view-leaderboards"
-      onclick="this.blur();"
-      title="leaderboard"
-    >
-      <div class="icon">
-        <i class="fas fa-fw fa-crown"></i>
-      </div>
-    </button> -->
     <a
       class="textButton view-leaderboards"
       href="/leaderboards"
-      onclick="this.blur();"
+      onclick="this.blur()"
       router-link
       title="leaderboards"
     >
@@ -81,7 +72,7 @@
     <a
       class="textButton view-about"
       href="/about"
-      onclick="this.blur();"
+      onclick="this.blur()"
       router-link
       title="about"
     >
@@ -89,21 +80,10 @@
         <i class="fas fa-fw fa-info"></i>
       </div>
     </a>
-    <!-- <a
-      class="textButton discord"
-      href="https://discord.gg/yENzqcB"
-      onclick="this.blur();"
-      target="_blank"
-      style="text-decoration: none;"
-    >
-      <div class="icon">
-        <i class="fab fa-discord"></i>
-      </div>
-    </a> -->
     <a
       class="textButton view-settings"
       href="/settings"
-      onclick="this.blur();"
+      onclick="this.blur()"
       router-link
       title="settings"
     >
@@ -111,17 +91,17 @@
         <i class="fas fa-fw fa-cog"></i>
       </div>
     </a>
-    <div></div>
-    <button class="text showAlerts" onclick="this.blur();">
+    <div class="spacer"></div>
+    <button class="text showAlerts" onclick="this.blur()">
       <div class="icon">
         <i class="fas fa-fw fa-bell"></i>
       </div>
-      <div class="notificationBubble hidden">5</div>
+      <div class="notificationBubble hidden"></div>
     </button>
     <a
       class="textButton view-login"
       href="/login"
-      onclick="this.blur();"
+      onclick="this.blur()"
       router-link
     >
       <i class="far fa-fw fa-user"></i>
@@ -130,16 +110,14 @@
       <a
         class="textButton view-account"
         href="/account"
-        onclick="this.blur();"
+        onclick="this.blur()"
         router-link
       >
-        <div class="loading hidden">
+        <div class="spinner">
           <i class="fas fa-fw fa-spin fa-circle-notch"></i>
         </div>
-        <div class="user">
-          <i class="fas fa-fw fa-user"></i>
-        </div>
-        <div class="avatar hidden"></div>
+        <div class="avatar"></div>
+        <div class="notificationBubble hidden"></div>
         <div class="text"></div>
         <div class="levelAndBar">
           <div class="level" data-balloon-pos="up">1</div>
@@ -156,14 +134,24 @@
       <div class="menu">
         <div class="spacer"></div>
         <div class="items">
-          <a href="/account" class="button" onclick="this.blur();" router-link>
+          <a href="/account" class="button" onclick="this.blur()" router-link>
             <i class="fas fa-fw fa-chart-line"></i>
             User stats
           </a>
           <a
+            href="/friends"
+            class="button goToFriends"
+            onclick="this.blur()"
+            router-link
+          >
+            <i class="fas fa-fw fa-user-friends"></i>
+            Friends
+            <span class="notificationBubble hidden">99</span>
+          </a>
+          <a
             href="/404"
             class="button goToProfile"
-            onclick="this.blur();"
+            onclick="this.blur()"
             router-link
           >
             <i class="fas fa-fw fa-globe-americas"></i>
@@ -172,13 +160,13 @@
           <a
             href="/account-settings"
             class="button"
-            onclick="this.blur();"
+            onclick="this.blur()"
             router-link
           >
             <i class="fas fa-fw fa-cog"></i>
             Account settings
           </a>
-          <button class="signOut" onclick="this.blur();">
+          <button class="signOut" onclick="this.blur()">
             <i class="fas fa-fw fa-sign-out-alt"></i>
             Sign out
           </button>

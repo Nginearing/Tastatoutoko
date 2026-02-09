@@ -1,6 +1,8 @@
+import { ElementWithUtils, qsr } from "../utils/dom";
 import Ape from "../ape";
 import Config from "../config";
-import * as Loader from "../elements/loader";
+
+import { showLoaderBar, hideLoaderBar } from "../signals/loader-bar";
 import * as Notifications from "../elements/notifications";
 import QuotesController, { Quote } from "../controllers/quotes-controller";
 import * as CaptchaController from "../controllers/captcha-controller";
@@ -8,7 +10,7 @@ import { removeLanguageSize } from "../utils/strings";
 import SlimSelect from "slim-select";
 import AnimatedModal, { ShowOptions } from "../utils/animated-modal";
 import { CharacterCounter } from "../elements/character-counter";
-import { QuoteReportReason } from "@monkeytype/contracts/schemas/quotes";
+import { QuoteReportReason } from "@monkeytype/schemas/quotes";
 
 type State = {
   quoteToReport?: Quote;
@@ -22,12 +24,12 @@ const state: State = {
 
 export async function show(
   quoteId: number,
-  showOptions?: ShowOptions
+  showOptions?: ShowOptions,
 ): Promise<void> {
   if (!CaptchaController.isCaptchaAvailable()) {
     Notifications.add(
       "Could not show quote report popup: Captcha is not available. This could happen due to a blocked or failed network request. Please refresh the page or contact support if this issue persists.",
-      -1
+      -1,
     );
     return;
   }
@@ -35,10 +37,10 @@ export async function show(
   void modal.show({
     mode: "dialog",
     ...showOptions,
-    beforeAnimation: async () => {
+    beforeAnimation: async (modalEl) => {
       CaptchaController.render(
-        document.querySelector("#quoteReportModal .g-recaptcha") as HTMLElement,
-        "quoteReportModal"
+        modalEl.qsr(".g-recaptcha").native,
+        "quoteReportModal",
       );
 
       const language =
@@ -49,9 +51,9 @@ export async function show(
         return quote.id === quoteId;
       });
 
-      $("#quoteReportModal .quote").text(state.quoteToReport?.text as string);
-      $("#quoteReportModal .reason").val("Grammatical error");
-      $("#quoteReportModal .comment").val("");
+      modalEl.qsr(".quote").setText(state.quoteToReport?.text as string);
+      modalEl.qsr<HTMLSelectElement>(".reason").setValue("Grammatical error");
+      modalEl.qsr<HTMLTextAreaElement>(".comment").setValue("");
 
       state.reasonSelect = new SlimSelect({
         select: "#quoteReportModal .reason",
@@ -60,7 +62,7 @@ export async function show(
         },
       });
 
-      new CharacterCounter($("#quoteReportModal .comment"), 250);
+      new CharacterCounter(modalEl.qsr(".comment"), 250);
     },
   });
 }
@@ -80,8 +82,12 @@ async function submitReport(): Promise<void> {
 
   const quoteId = state.quoteToReport?.id.toString();
   const quoteLanguage = removeLanguageSize(Config.language);
-  const reason = $("#quoteReportModal .reason").val() as QuoteReportReason;
-  const comment = $("#quoteReportModal .comment").val() as string;
+  const reason = qsr<HTMLSelectElement>(
+    "#quoteReportModal .reason",
+  ).getValue() as QuoteReportReason;
+  const comment = qsr<HTMLTextAreaElement>(
+    "#quoteReportModal .comment",
+  ).getValue() as string;
   const captcha = captchaResponse;
 
   if (quoteId === undefined || quoteId === "") {
@@ -102,12 +108,12 @@ async function submitReport(): Promise<void> {
   const characterDifference = comment.length - 250;
   if (characterDifference > 0) {
     Notifications.add(
-      `Report comment is ${characterDifference} character(s) too long`
+      `Report comment is ${characterDifference} character(s) too long`,
     );
     return;
   }
 
-  Loader.show();
+  showLoaderBar();
   const response = await Ape.quotes.report({
     body: {
       quoteId,
@@ -117,10 +123,10 @@ async function submitReport(): Promise<void> {
       captcha,
     },
   });
-  Loader.hide();
+  hideLoaderBar();
 
   if (response.status !== 200) {
-    Notifications.add("Failed to report quote: " + response.body.message, -1);
+    Notifications.add("Failed to report quote", -1, { response });
     return;
   }
 
@@ -128,8 +134,8 @@ async function submitReport(): Promise<void> {
   void hide(true);
 }
 
-async function setup(modalEl: HTMLElement): Promise<void> {
-  modalEl.querySelector("button")?.addEventListener("click", async () => {
+async function setup(modalEl: ElementWithUtils): Promise<void> {
+  modalEl.qs("button")?.on("click", async () => {
     await submitReport();
   });
 }
